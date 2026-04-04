@@ -83,9 +83,18 @@ download_if_missing() {
   local dir="$2"
   local forced_version="$3"
 
-  mapfile -t build_info < <(resolve_latest_build "$project" "$forced_version")
+  mapfile -t build_info < <(resolve_latest_build "$project" "$forced_version") || true
   if (( ${#build_info[@]} < 3 )); then
-    echo "Error: failed to resolve latest $project build metadata." >&2
+    local existing_jar=""
+    existing_jar="$(find "$dir" -maxdepth 1 -type f -name "${project}-*.jar" | sort | tail -n 1 || true)"
+    if [[ -n "$existing_jar" ]]; then
+      local existing_jar_name
+      existing_jar_name="$(basename "$existing_jar")"
+      echo "Warning: failed to resolve latest $project metadata; using existing $existing_jar_name."
+      ln -sfn "$existing_jar_name" "$dir/server.jar"
+      return 0
+    fi
+    echo "Error: failed to resolve latest $project build metadata and no local ${project}-*.jar is available in $dir." >&2
     return 1
   fi
   local version="${build_info[0]}"
@@ -110,13 +119,12 @@ download_if_missing() {
 }
 
 if [[ -z "$PAPER_VERSION" ]]; then
-  mapfile -t waterfall_build_info < <(resolve_latest_build "waterfall" "$WATERFALL_VERSION")
+  mapfile -t waterfall_build_info < <(resolve_latest_build "waterfall" "$WATERFALL_VERSION") || true
   if (( ${#waterfall_build_info[@]} >= 1 )); then
     PAPER_VERSION="${waterfall_build_info[0]}"
     echo "PAPER_VERSION not set; matching backend version to Waterfall: $PAPER_VERSION"
   else
-    echo "Error: failed to resolve Waterfall version for Paper version alignment." >&2
-    exit 1
+    echo "Warning: failed to resolve Waterfall version for Paper alignment; resolving Paper version independently."
   fi
 fi
 
@@ -130,6 +138,7 @@ download_plugin_from_modrinth() {
   local project_id="$1"
   local destination="$2"
   local fallback_local_jar="$3"
+  local required="${4:-1}"
 
   local plugin_jar
   plugin_jar="$(python3 - "$project_id" <<'PY'
@@ -171,19 +180,24 @@ PY
     return 0
   fi
 
-  if [[ -f "$fallback_local_jar" ]]; then
+  if [[ -n "$fallback_local_jar" && -f "$fallback_local_jar" ]]; then
     echo "Warning: could not resolve latest $project_id from Modrinth, using bundled $(basename "$fallback_local_jar")."
     cp "$fallback_local_jar" "$destination/"
     return 0
   fi
 
-  echo "Error: failed to download $project_id plugin and no fallback jar found at $fallback_local_jar" >&2
-  return 1
+  if [[ "$required" == "1" ]]; then
+    echo "Error: failed to download $project_id plugin and no fallback jar found at $fallback_local_jar" >&2
+    return 1
+  fi
+
+  echo "Warning: failed to download optional plugin $project_id; continuing without it."
+  return 0
 }
 
-download_plugin_from_modrinth "geyser" "$PROXY_DIR/plugins" "$PWD/Geyser-BungeeCord.jar"
-download_plugin_from_modrinth "floodgate" "$PROXY_DIR/plugins" "$PWD/floodgate-bungee.jar"
-download_plugin_from_modrinth "viaversion" "$PROXY_DIR/plugins" ""
+download_plugin_from_modrinth "geyser" "$PROXY_DIR/plugins" "$PWD/Geyser-BungeeCord.jar" 1
+download_plugin_from_modrinth "floodgate" "$PROXY_DIR/plugins" "$PWD/floodgate-bungee.jar" 1
+download_plugin_from_modrinth "viaversion" "$PROXY_DIR/plugins" "" 0
 
 cat > "$PROXY_DIR/config.yml" <<YAML
 listeners:
@@ -296,6 +310,14 @@ if ! command -v tmux >/dev/null 2>&1; then
   exit 1
 fi
 
+ensure_session_absent() {
+  local session_name="$1"
+  if tmux has-session -t "$session_name" 2>/dev/null; then
+    echo "Session $session_name already exists; replacing it."
+    tmux kill-session -t "$session_name"
+  fi
+}
+
 wait_for_port() {
   local host="$1"
   local port="$2"
@@ -312,6 +334,10 @@ wait_for_port() {
     fi
   done
 }
+
+ensure_session_absent mc-lobby
+ensure_session_absent mc-survival
+ensure_session_absent mc-proxy
 
 tmux new-session -d -s mc-lobby "$BASE_DIR/lobby/run.sh"
 tmux new-session -d -s mc-survival "$BASE_DIR/survival/run.sh"
