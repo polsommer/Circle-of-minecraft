@@ -69,6 +69,11 @@ cd ~/mc-network
 1. Download the proxy jar into `~/mc-network/proxy`.
 2. Start once to generate config files.
 
+Official proxy downloads:
+
+- **Waterfall (recommended):** https://papermc.io/downloads/waterfall
+- **BungeeCord:** https://www.spigotmc.org/wiki/bungeecord-installation/
+
 ```bash
 cd ~/mc-network/proxy
 # Example (replace jar name with your actual file)
@@ -105,6 +110,11 @@ servers:
 ## 3) Set up backend servers (Paper/Spigot)
 
 Repeat for each backend (`lobby`, `survival`).
+
+Official backend downloads:
+
+- **Paper (recommended):** https://papermc.io/downloads/paper
+- **Spigot/BuildTools:** https://www.spigotmc.org/wiki/buildtools/
 
 ```bash
 cd ~/mc-network/lobby
@@ -149,8 +159,8 @@ settings:
 
 Install these plugins in `~/mc-network/proxy/plugins`:
 
-- **Geyser-Bungee**
-- **Floodgate-Bungee**
+- **Geyser-Bungee:** https://geysermc.org/download
+- **Floodgate-Bungee:** https://geysermc.org/download
 
 Then restart proxy once so configs generate.
 
@@ -166,9 +176,9 @@ Floodgate usually works with default generated keys/config.
 
 Useful for mixed versions and smoother experience:
 
-- ViaVersion (proxy/backend as needed)
-- ViaBackwards
-- ViaRewind
+- ViaVersion (proxy/backend as needed): https://hangar.papermc.io/ViaVersion/ViaVersion
+- ViaBackwards: https://hangar.papermc.io/ViaVersion/ViaBackwards
+- ViaRewind: https://hangar.papermc.io/ViaVersion/ViaRewind
 
 ---
 
@@ -237,6 +247,12 @@ Create separate sessions for survival + proxy.
 - **CoreProtect** (rollback / logging)
 - **spark** (performance profiling)
 - **Plan** (analytics)
+
+Download hubs for common plugins:
+
+- Hangar: https://hangar.papermc.io/
+- Modrinth (plugins): https://modrinth.com/plugins
+- SpigotMC resources: https://www.spigotmc.org/resources/
 
 ---
 
