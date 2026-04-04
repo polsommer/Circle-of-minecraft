@@ -38,6 +38,21 @@ java -version
 
 ---
 
+## Easy clone + setup guide
+
+If you are starting from scratch, use these exact commands:
+
+```bash
+git clone https://github.com/polsommer/Circle-of-minecraft.git
+cd Circle-of-minecraft
+chmod +x scripts/provision-network.sh
+./scripts/provision-network.sh
+```
+
+That will clone the repo, enter the project folder, and provision your Minecraft network.
+
+---
+
 ## One-command setup
 
 From this repository root:
