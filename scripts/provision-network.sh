@@ -102,10 +102,22 @@ download_if_missing() {
   ln -sfn "$jar_name" "$dir/server.jar"
 }
 
+if [[ -z "$PAPER_VERSION" ]]; then
+  mapfile -t waterfall_build_info < <(resolve_latest_build "waterfall" "$WATERFALL_VERSION")
+  if (( ${#waterfall_build_info[@]} >= 1 )); then
+    PAPER_VERSION="${waterfall_build_info[0]}"
+    echo "PAPER_VERSION not set; matching backend version to Waterfall: $PAPER_VERSION"
+  else
+    echo "Error: failed to resolve Waterfall version for Paper version alignment." >&2
+    exit 1
+  fi
+fi
+
 download_if_missing "waterfall" "$PROXY_DIR" "$WATERFALL_VERSION"
 download_if_missing "paper" "$LOBBY_DIR" "$PAPER_VERSION"
 download_if_missing "paper" "$SURVIVAL_DIR" "$PAPER_VERSION"
 rm -f "$PROXY_DIR/plugins"/Geyser-*.jar "$PROXY_DIR/plugins"/floodgate-*.jar
+rm -f "$PROXY_DIR/plugins"/ViaVersion-*.jar
 
 download_plugin_from_modrinth() {
   local project_id="$1"
@@ -164,6 +176,7 @@ PY
 
 download_plugin_from_modrinth "geyser" "$PROXY_DIR/plugins" "$PWD/Geyser-BungeeCord.jar"
 download_plugin_from_modrinth "floodgate" "$PROXY_DIR/plugins" "$PWD/floodgate-bungee.jar"
+download_plugin_from_modrinth "viaversion" "$PROXY_DIR/plugins" ""
 
 cat > "$PROXY_DIR/config.yml" <<YAML
 listeners:
