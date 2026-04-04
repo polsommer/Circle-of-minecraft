@@ -12,9 +12,10 @@ A quick-start toolkit for running a **Java + Bedrock Minecraft network** on Linu
 
 - Automated provisioning script that:
   - Downloads latest Waterfall + Paper builds from PaperMC
+  - Downloads latest Geyser + Floodgate proxy plugins from Modrinth
   - Creates proxy/lobby/survival structure
   - Sets Bungee-compatible backend settings
-  - Installs included `Geyser-BungeeCord.jar` and `floodgate-bungee.jar`
+  - Falls back to bundled `Geyser-BungeeCord.jar` and `floodgate-bungee.jar` only if plugin API lookup fails
   - Generates start/stop scripts for tmux-based process management
 - Production-friendly defaults for a small community server
 
@@ -27,6 +28,7 @@ A quick-start toolkit for running a **Java + Bedrock Minecraft network** on Linu
 - `python3`
 - `curl`
 - `tmux`
+- internet access (to fetch latest server and plugin binaries)
 
 Install dependencies on Ubuntu/Debian:
 
