@@ -304,6 +304,7 @@ cat > "$NETWORK_DIR/start-all.sh" <<'EOF_START'
 #!/usr/bin/env bash
 set -euo pipefail
 BASE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_START_TIMEOUT="${BACKEND_START_TIMEOUT:-240}"
 
 if ! command -v tmux >/dev/null 2>&1; then
   echo "tmux is required for start-all.sh" >&2
@@ -322,14 +323,21 @@ wait_for_port() {
   local host="$1"
   local port="$2"
   local name="$3"
-  local timeout_seconds="${4:-90}"
+  local session_name="$4"
+  local timeout_seconds="${5:-$BACKEND_START_TIMEOUT}"
   local elapsed=0
 
   while ! (echo >"/dev/tcp/$host/$port") >/dev/null 2>&1; do
+    if ! tmux has-session -t "$session_name" 2>/dev/null; then
+      echo "$name session ($session_name) exited before opening $host:$port." >&2
+      return 1
+    fi
     sleep 1
     elapsed=$((elapsed + 1))
     if (( elapsed >= timeout_seconds )); then
       echo "Timed out waiting for $name on $host:$port after ${timeout_seconds}s." >&2
+      echo "Last $session_name logs:" >&2
+      tmux capture-pane -p -S -120 -t "$session_name" 2>/dev/null || true
       return 1
     fi
   done
@@ -341,8 +349,8 @@ ensure_session_absent mc-proxy
 
 tmux new-session -d -s mc-lobby "$BASE_DIR/lobby/run.sh"
 tmux new-session -d -s mc-survival "$BASE_DIR/survival/run.sh"
-wait_for_port 127.0.0.1 25566 "lobby backend"
-wait_for_port 127.0.0.1 25567 "survival backend"
+wait_for_port 127.0.0.1 25566 "lobby backend" "mc-lobby"
+wait_for_port 127.0.0.1 25567 "survival backend" "mc-survival"
 tmux new-session -d -s mc-proxy "$BASE_DIR/proxy/run.sh"
 
 echo "Started sessions: mc-lobby, mc-survival, mc-proxy"
