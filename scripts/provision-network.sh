@@ -324,12 +324,17 @@ wait_for_port() {
   local port="$2"
   local name="$3"
   local session_name="$4"
-  local timeout_seconds="${5:-$BACKEND_START_TIMEOUT}"
+  local log_file="${5:-}"
+  local timeout_seconds="${6:-$BACKEND_START_TIMEOUT}"
   local elapsed=0
 
   while ! (echo >"/dev/tcp/$host/$port") >/dev/null 2>&1; do
     if ! tmux has-session -t "$session_name" 2>/dev/null; then
       echo "$name session ($session_name) exited before opening $host:$port." >&2
+      if [[ -n "$log_file" && -f "$log_file" ]]; then
+        echo "Last log lines from $log_file:" >&2
+        tail -n 120 "$log_file" >&2 || true
+      fi
       return 1
     fi
     sleep 1
@@ -349,8 +354,8 @@ ensure_session_absent mc-proxy
 
 tmux new-session -d -s mc-lobby "$BASE_DIR/lobby/run.sh"
 tmux new-session -d -s mc-survival "$BASE_DIR/survival/run.sh"
-wait_for_port 127.0.0.1 25566 "lobby backend" "mc-lobby"
-wait_for_port 127.0.0.1 25567 "survival backend" "mc-survival"
+wait_for_port 127.0.0.1 25566 "lobby backend" "mc-lobby" "$BASE_DIR/lobby/logs/latest.log"
+wait_for_port 127.0.0.1 25567 "survival backend" "mc-survival" "$BASE_DIR/survival/logs/latest.log"
 tmux new-session -d -s mc-proxy "$BASE_DIR/proxy/run.sh"
 
 echo "Started sessions: mc-lobby, mc-survival, mc-proxy"
