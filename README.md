@@ -89,6 +89,9 @@ Useful knobs:
 - `JAVA_SURVIVAL_MEM` (default: `-Xms1G -Xmx4G`)
 - `PROXY_LISTEN_IP` (default: `192.168.88.100`)
   - If this IP is not present on the machine, provisioning falls back to `0.0.0.0` so the proxy still starts.
+- `PRESERVE_EXISTING_JARS=1` (default: `0`)
+  - By default, provisioning refreshes Waterfall/Paper jars to the resolved latest build each run.
+  - Set to `1` only if you intentionally want to keep already-downloaded jar files.
 
 ---
 
@@ -154,3 +157,29 @@ Keep backend ports (`25566`, `25567`) private.
 - Backends are intentionally `online-mode=false` because authentication is handled by proxy.
 - Proxy has `ip_forward: true` and backends have `settings.bungeecord: true`.
 - For internet-facing deployments, run behind a reverse proxy/firewall and consider anti-bot/proxy protections.
+
+---
+
+## Troubleshooting: “Server is outdated”
+
+If players see **“Outdated server/client”** when joining:
+
+1. Re-run provisioning so proxy/backends are refreshed to current builds:
+
+   ```bash
+   ./scripts/provision-network.sh
+   ```
+
+2. Restart all tmux sessions:
+
+   ```bash
+   cd mc-network
+   ./stop-all.sh
+   ./start-all.sh
+   ```
+
+3. Confirm the client version:
+   - **Java:** ViaVersion helps old/new Java clients, but very old versions can still fail depending on protocol gaps.
+   - **Bedrock:** Ensure Geyser is loaded in `mc-network/proxy/plugins/` and UDP `19132` is open.
+
+4. If you intentionally pinned old jars, remove `PRESERVE_EXISTING_JARS=1` and provision again.
