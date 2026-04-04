@@ -13,6 +13,8 @@ JAVA_SURVIVAL_MEM="${JAVA_SURVIVAL_MEM:--Xms1G -Xmx4G}"
 
 PAPER_VERSION="${PAPER_VERSION:-}"
 WATERFALL_VERSION="${WATERFALL_VERSION:-}"
+PROXY_LISTEN_IP="${PROXY_LISTEN_IP:-192.168.88.100}"
+PROXY_BIND_ADDRESS="$PROXY_LISTEN_IP"
 
 if ! command -v java >/dev/null 2>&1; then
   echo "Java is required. Install Java 21+ first." >&2
@@ -22,6 +24,11 @@ fi
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required for resolving latest Paper/Waterfall builds." >&2
   exit 1
+fi
+
+if ! ip -4 addr show | grep -Fq "inet ${PROXY_LISTEN_IP}/"; then
+  echo "Warning: PROXY_LISTEN_IP ${PROXY_LISTEN_IP} is not configured on this host. Falling back to 0.0.0.0."
+  PROXY_BIND_ADDRESS="0.0.0.0"
 fi
 
 mkdir -p "$PROXY_DIR/plugins" "$LOBBY_DIR" "$SURVIVAL_DIR" "$BACKUP_DIR"
@@ -89,7 +96,7 @@ if [[ -f "$PWD/floodgate-bungee.jar" ]]; then
   cp "$PWD/floodgate-bungee.jar" "$PROXY_DIR/plugins/"
 fi
 
-cat > "$PROXY_DIR/config.yml" <<'YAML'
+cat > "$PROXY_DIR/config.yml" <<YAML
 listeners:
 - query_port: 25565
   motd: '&3&lCircle of Minecraft &7| &bJava + Bedrock'
@@ -102,7 +109,7 @@ listeners:
   priorities:
   - lobby
   bind_local_address: true
-  host: 0.0.0.0:25565
+  host: ${PROXY_BIND_ADDRESS}:25565
   max_players: 100
   tab_size: 60
   force_default_server: false
@@ -142,6 +149,7 @@ YAML
 
 cat > "$LOBBY_DIR/server.properties" <<'EOF_PROPS'
 server-port=25566
+server-ip=127.0.0.1
 online-mode=false
 motd=Circle Lobby
 max-players=75
@@ -153,6 +161,7 @@ EOF_PROPS
 
 cat > "$SURVIVAL_DIR/server.properties" <<'EOF_PROPS'
 server-port=25567
+server-ip=127.0.0.1
 online-mode=false
 motd=Circle Survival
 max-players=75
