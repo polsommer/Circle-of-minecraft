@@ -183,3 +183,32 @@ If players see **“Outdated server/client”** when joining:
    - **Bedrock:** Ensure Geyser is loaded in `mc-network/proxy/plugins/` and UDP `19132` is open.
 
 4. If you intentionally pinned old jars, remove `PRESERVE_EXISTING_JARS=1` and provision again.
+
+---
+
+## Troubleshooting: “Could not connect to a default or fallback server”
+
+If the proxy log includes `finishConnect(..) failed: Connection refused: /127.0.0.1:25566`, the backend server was not listening yet (or failed to start).
+
+1. Re-run provisioning to regenerate the improved `start-all.sh` that waits for backend ports before starting the proxy:
+
+   ```bash
+   ./scripts/provision-network.sh
+   ```
+
+2. Restart sessions:
+
+   ```bash
+   cd mc-network
+   ./stop-all.sh
+   ./start-all.sh
+   ```
+
+3. If it still fails, check backend tmux logs directly:
+
+   ```bash
+   tmux attach -t mc-lobby
+   tmux attach -t mc-survival
+   ```
+
+   Common causes are Java version mismatch, plugin crashes, or an existing process already using `25566/25567`.
