@@ -139,15 +139,19 @@ download_plugin_from_modrinth() {
   local destination="$2"
   local fallback_local_jar="$3"
   local required="${4:-1}"
+  local loader_targets="${5:-}"
+  local target_game_version="${6:-}"
 
   local plugin_jar
-  plugin_jar="$(python3 - "$project_id" <<'PY'
+  plugin_jar="$(python3 - "$project_id" "$loader_targets" "$target_game_version" <<'PY'
 import json
 import sys
 import urllib.request
 import urllib.error
 
 project_id = sys.argv[1]
+target_loaders = [loader.strip().lower() for loader in sys.argv[2].split(",") if loader.strip()]
+target_game_version = sys.argv[3].strip()
 url = f"https://api.modrinth.com/v2/project/{project_id}/version"
 req = urllib.request.Request(url, headers={"User-Agent": "circle-of-minecraft/1.0"})
 try:
@@ -157,14 +161,64 @@ try:
     if not versions:
         raise SystemExit(1)
 
+    stable_candidates = []
+    fallback_candidates = []
+
     for version in versions:
         if version.get("status") != "listed":
             continue
-        for f in version.get("files", []):
-            filename = f.get("filename", "")
-            if filename.endswith(".jar") and f.get("url"):
-                print(f"{filename}|{f['url']}")
-                raise SystemExit(0)
+
+        version_loaders = [loader.lower() for loader in version.get("loaders", []) if isinstance(loader, str)]
+        if target_loaders and not any(loader in version_loaders for loader in target_loaders):
+            continue
+
+        game_versions = [v for v in version.get("game_versions", []) if isinstance(v, str)]
+        if target_game_version and target_game_version not in game_versions:
+            continue
+
+        primary_file = None
+        backup_file = None
+        for file_info in version.get("files", []):
+            filename = file_info.get("filename", "")
+            file_url = file_info.get("url")
+            if not (filename.endswith(".jar") and file_url):
+                continue
+            if file_info.get("primary") and primary_file is None:
+                primary_file = file_info
+            if backup_file is None:
+                backup_file = file_info
+
+        chosen_file = primary_file or backup_file
+        if not chosen_file:
+            continue
+
+        selected_loader = ""
+        if target_loaders:
+            for loader in target_loaders:
+                if loader in version_loaders:
+                    selected_loader = loader
+                    break
+        if not selected_loader and version_loaders:
+            selected_loader = version_loaders[0]
+
+        selected_game_version = target_game_version if target_game_version else (game_versions[0] if game_versions else "")
+        version_type = (version.get("version_type") or "").lower()
+        candidate = (
+            chosen_file["filename"],
+            chosen_file["url"],
+            selected_loader,
+            selected_game_version,
+            version_type or "unknown",
+        )
+        if version_type == "release":
+            stable_candidates.append(candidate)
+        else:
+            fallback_candidates.append(candidate)
+
+    picked = stable_candidates[0] if stable_candidates else (fallback_candidates[0] if fallback_candidates else None)
+    if picked:
+        print("|".join(picked))
+        raise SystemExit(0)
 except (urllib.error.URLError, TimeoutError, KeyError, ValueError):
     raise SystemExit(1)
 raise SystemExit(1)
@@ -172,16 +226,15 @@ PY
 )" || true
 
   if [[ -n "$plugin_jar" ]]; then
-    local jar_name jar_url
-    jar_name="${plugin_jar%%|*}"
-    jar_url="${plugin_jar#*|}"
-    echo "Downloading latest $project_id plugin: $jar_name"
+    local jar_name jar_url selected_loader selected_game_version selected_channel
+    IFS='|' read -r jar_name jar_url selected_loader selected_game_version selected_channel <<< "$plugin_jar"
+    echo "Downloading $project_id plugin: loader=${selected_loader:-unknown}, game=${selected_game_version:-any}, channel=${selected_channel:-unknown}, file=$jar_name"
     curl -fsSL "$jar_url" -o "$destination/$jar_name"
     return 0
   fi
 
   if [[ -n "$fallback_local_jar" && -f "$fallback_local_jar" ]]; then
-    echo "Warning: could not resolve latest $project_id from Modrinth, using bundled $(basename "$fallback_local_jar")."
+    echo "Warning: could not resolve compatible $project_id artifact from Modrinth (loaders=${loader_targets:-any}, game=${target_game_version:-any}); using bundled $(basename "$fallback_local_jar")."
     cp "$fallback_local_jar" "$destination/"
     return 0
   fi
@@ -195,9 +248,9 @@ PY
   return 0
 }
 
-download_plugin_from_modrinth "geyser" "$PROXY_DIR/plugins" "$PWD/Geyser-BungeeCord.jar" 1
-download_plugin_from_modrinth "floodgate" "$PROXY_DIR/plugins" "$PWD/floodgate-bungee.jar" 1
-download_plugin_from_modrinth "viaversion" "$PROXY_DIR/plugins" "" 0
+download_plugin_from_modrinth "geyser" "$PROXY_DIR/plugins" "$PWD/Geyser-BungeeCord.jar" 1 "bungeecord,waterfall,velocity" "$PAPER_VERSION"
+download_plugin_from_modrinth "floodgate" "$PROXY_DIR/plugins" "$PWD/floodgate-bungee.jar" 1 "bungeecord,waterfall,velocity" "$PAPER_VERSION"
+download_plugin_from_modrinth "viaversion" "$PROXY_DIR/plugins" "" 0 "bungeecord,waterfall,velocity" "$PAPER_VERSION"
 
 cat > "$PROXY_DIR/config.yml" <<YAML
 listeners:
