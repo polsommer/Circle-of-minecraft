@@ -83,6 +83,8 @@ Useful knobs:
 - `JAVA_PROXY_MEM` (default: `-Xms512M -Xmx1G`)
 - `JAVA_LOBBY_MEM` (default: `-Xms1G -Xmx3G`)
 - `JAVA_SURVIVAL_MEM` (default: `-Xms1G -Xmx4G`)
+- `PROXY_LISTEN_IP` (default: `192.168.88.100`)
+  - If this IP is not present on the machine, provisioning falls back to `0.0.0.0` so the proxy still starts.
 
 ---
 
