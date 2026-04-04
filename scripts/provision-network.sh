@@ -10,6 +10,7 @@ BACKUP_DIR="$NETWORK_DIR/backups"
 JAVA_PROXY_MEM="${JAVA_PROXY_MEM:--Xms512M -Xmx1G}"
 JAVA_LOBBY_MEM="${JAVA_LOBBY_MEM:--Xms1G -Xmx3G}"
 JAVA_SURVIVAL_MEM="${JAVA_SURVIVAL_MEM:--Xms1G -Xmx4G}"
+PRESERVE_EXISTING_JARS="${PRESERVE_EXISTING_JARS:-0}"
 
 PAPER_VERSION="${PAPER_VERSION:-}"
 WATERFALL_VERSION="${WATERFALL_VERSION:-}"
@@ -96,7 +97,13 @@ download_if_missing() {
     echo "Downloading $project $version build $build ..."
     curl -fsSL "https://api.papermc.io/v2/projects/$project/versions/$version/builds/$build/downloads/$jar_name" -o "$jar_path"
   else
-    echo "Using existing $jar_name"
+    if [[ "$PRESERVE_EXISTING_JARS" == "1" ]]; then
+      echo "Using existing $jar_name (PRESERVE_EXISTING_JARS=1)"
+    else
+      echo "Refreshing $project $version build $build ..."
+      rm -f "$dir"/"${project}"-*.jar
+      curl -fsSL "https://api.papermc.io/v2/projects/$project/versions/$version/builds/$build/downloads/$jar_name" -o "$jar_path"
+    fi
   fi
 
   ln -sfn "$jar_name" "$dir/server.jar"
