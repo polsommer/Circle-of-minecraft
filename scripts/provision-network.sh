@@ -43,6 +43,66 @@ fi
 
 mkdir -p "$PROXY_DIR/plugins" "$LOBBY_DIR" "$SURVIVAL_DIR" "$BACKUP_DIR"
 
+validate_jar() {
+  local jar_path="$1"
+  local component_name="$2"
+  local required="${3:-1}"
+
+  if [[ ! -s "$jar_path" ]]; then
+    echo "Error: invalid $component_name jar at $jar_path (missing or empty)." >&2
+    rm -f "$jar_path"
+    if [[ "$required" == "1" ]]; then
+      exit 1
+    fi
+    echo "Warning: optional component $component_name is invalid; continuing without it."
+    return 1
+  fi
+
+  if command -v unzip >/dev/null 2>&1; then
+    if ! unzip -tqq "$jar_path" >/dev/null 2>&1; then
+      echo "Error: invalid $component_name jar at $jar_path (ZIP/JAR integrity check failed)." >&2
+      rm -f "$jar_path"
+      if [[ "$required" == "1" ]]; then
+        exit 1
+      fi
+      echo "Warning: optional component $component_name is invalid; continuing without it."
+      return 1
+    fi
+    return 0
+  fi
+
+  if command -v jar >/dev/null 2>&1; then
+    if ! jar tf "$jar_path" >/dev/null 2>&1; then
+      echo "Error: invalid $component_name jar at $jar_path (jar listing failed)." >&2
+      rm -f "$jar_path"
+      if [[ "$required" == "1" ]]; then
+        exit 1
+      fi
+      echo "Warning: optional component $component_name is invalid; continuing without it."
+      return 1
+    fi
+    return 0
+  fi
+
+  if command -v file >/dev/null 2>&1; then
+    local file_desc
+    file_desc="$(file -b "$jar_path" | tr '[:upper:]' '[:lower:]')"
+    if [[ "$file_desc" != *zip* && "$file_desc" != *jar* ]]; then
+      echo "Error: invalid $component_name jar at $jar_path (unexpected type: $file_desc)." >&2
+      rm -f "$jar_path"
+      if [[ "$required" == "1" ]]; then
+        exit 1
+      fi
+      echo "Warning: optional component $component_name is invalid; continuing without it."
+      return 1
+    fi
+    return 0
+  fi
+
+  echo "Warning: could not validate $component_name jar at $jar_path (no unzip/jar/file command available)."
+  return 0
+}
+
 resolve_latest_build() {
   local project="$1"
   local forced_version="$2"
@@ -105,6 +165,7 @@ download_if_missing() {
   if [[ ! -f "$jar_path" ]]; then
     echo "Downloading $project $version build $build ..."
     curl -fsSL "https://api.papermc.io/v2/projects/$project/versions/$version/builds/$build/downloads/$jar_name" -o "$jar_path"
+    validate_jar "$jar_path" "$project"
   else
     if [[ "$PRESERVE_EXISTING_JARS" == "1" ]]; then
       echo "Using existing $jar_name (PRESERVE_EXISTING_JARS=1)"
@@ -112,6 +173,7 @@ download_if_missing() {
       echo "Refreshing $project $version build $build ..."
       rm -f "$dir"/"${project}"-*.jar
       curl -fsSL "https://api.papermc.io/v2/projects/$project/versions/$version/builds/$build/downloads/$jar_name" -o "$jar_path"
+      validate_jar "$jar_path" "$project"
     fi
   fi
 
@@ -230,12 +292,16 @@ PY
     IFS='|' read -r jar_name jar_url selected_loader selected_game_version selected_channel <<< "$plugin_jar"
     echo "Downloading $project_id plugin: loader=${selected_loader:-unknown}, game=${selected_game_version:-any}, channel=${selected_channel:-unknown}, file=$jar_name"
     curl -fsSL "$jar_url" -o "$destination/$jar_name"
+    validate_jar "$destination/$jar_name" "$project_id" "$required"
     return 0
   fi
 
   if [[ -n "$fallback_local_jar" && -f "$fallback_local_jar" ]]; then
-    echo "Warning: could not resolve compatible $project_id artifact from Modrinth (loaders=${loader_targets:-any}, game=${target_game_version:-any}); using bundled $(basename "$fallback_local_jar")."
+    local fallback_name
+    fallback_name="$(basename "$fallback_local_jar")"
+    echo "Warning: could not resolve compatible $project_id artifact from Modrinth (loaders=${loader_targets:-any}, game=${target_game_version:-any}); using bundled $fallback_name."
     cp "$fallback_local_jar" "$destination/"
+    validate_jar "$destination/$fallback_name" "$project_id" "$required"
     return 0
   fi
 
