@@ -1,197 +1,121 @@
 # Circle-of-minecraft
 
-A quick-start guide to run a **Java + Bedrock Minecraft network** using **BungeeCord** (no Docker).
+A quick-start toolkit for running a **Java + Bedrock Minecraft network** on Linux with:
+
+- **Waterfall proxy** (Bungee-compatible)
+- **Paper lobby + survival backends**
+- **Geyser + Floodgate** support for Bedrock players
 
 ---
 
-## What this setup gives you
+## What you get
 
-- One proxy server (BungeeCord) that players connect to.
-- Multiple backend Paper/Spigot servers (lobby, survival, etc.).
-- Java players connect directly.
-- Bedrock players connect through **Geyser + Floodgate**.
-
-> Recommended for stability: use **Waterfall** (Bungee-compatible) instead of vanilla BungeeCord. If you want strict BungeeCord, the steps are nearly identical.
+- Automated provisioning script that:
+  - Downloads latest Waterfall + Paper builds from PaperMC
+  - Creates proxy/lobby/survival structure
+  - Sets Bungee-compatible backend settings
+  - Installs included `Geyser-BungeeCord.jar` and `floodgate-bungee.jar`
+  - Generates start/stop scripts for tmux-based process management
+- Production-friendly defaults for a small community server
 
 ---
 
 ## Requirements
 
-### Hardware (minimum for small network)
+- Linux host (Ubuntu 22.04+ recommended)
+- Java 21+
+- `python3`
+- `curl`
+- `tmux`
 
-- 4 vCPU
-- 8 GB RAM
-- SSD storage (strongly recommended)
-- Linux server (Ubuntu 22.04+ suggested)
-
-### Software
-
-- Java 21 (or Java version required by your proxy/backend builds)
-- `screen` or `tmux` (for background sessions)
-- `ufw`/firewall management
-- Optional but recommended:
-  - `git`
-  - `curl`
-  - `unzip`
-
-Install basics (Ubuntu/Debian):
+Install dependencies on Ubuntu/Debian:
 
 ```bash
 sudo apt update
-sudo apt install -y openjdk-21-jre-headless screen curl ufw
+sudo apt install -y openjdk-21-jre-headless python3 curl tmux ufw
 java -version
 ```
 
 ---
 
-## Network layout example
+## One-command setup
 
-- Proxy (Bungee/Waterfall): `25565`
-- Lobby backend: `25566`
-- Survival backend: `25567`
-
-Only expose **25565** publicly.
-Keep backend ports firewalled/private.
-
----
-
-## 1) Create folders
+From this repository root:
 
 ```bash
-mkdir -p ~/mc-network/{proxy,lobby,survival,plugins,backups}
-cd ~/mc-network
+chmod +x scripts/provision-network.sh
+./scripts/provision-network.sh
 ```
 
----
+This creates `./mc-network` with:
 
-## 2) Set up the proxy (BungeeCord/Waterfall)
+- `proxy/` (Waterfall + plugins)
+- `lobby/` (Paper backend on `25566`)
+- `survival/` (Paper backend on `25567`)
+- `start-all.sh` / `stop-all.sh`
 
-1. Download the proxy jar into `~/mc-network/proxy`.
-2. Start once to generate config files.
-
-Official proxy downloads:
-
-- **Waterfall (recommended):** https://papermc.io/downloads/waterfall
-- **BungeeCord:** https://www.spigotmc.org/wiki/bungeecord-installation/
+### Optional environment overrides
 
 ```bash
-cd ~/mc-network/proxy
-# Example (replace jar name with your actual file)
-java -Xms512M -Xmx1G -jar waterfall.jar
+NETWORK_DIR=/srv/mc-network PAPER_VERSION=1.21.4 ./scripts/provision-network.sh
 ```
 
-Stop it after first boot.
+Useful knobs:
 
-### Configure `config.yml` (proxy)
-
-Key points:
-
-- Set `ip_forward: true`
-- Add backend servers under `servers:`
-- Set a listener host/port (usually `0.0.0.0:25565`)
-- Use forced host if needed for subdomains
-
-Example server section:
-
-```yaml
-servers:
-  lobby:
-    motd: "Lobby"
-    address: 127.0.0.1:25566
-    restricted: false
-  survival:
-    motd: "Survival"
-    address: 127.0.0.1:25567
-    restricted: false
-```
+- `NETWORK_DIR` (default: `./mc-network`)
+- `PAPER_VERSION` (default: latest stable from PaperMC)
+- `WATERFALL_VERSION` (default: latest stable from PaperMC)
+- `JAVA_PROXY_MEM` (default: `-Xms512M -Xmx1G`)
+- `JAVA_LOBBY_MEM` (default: `-Xms1G -Xmx3G`)
+- `JAVA_SURVIVAL_MEM` (default: `-Xms1G -Xmx4G`)
 
 ---
 
-## 3) Set up backend servers (Paper/Spigot)
-
-Repeat for each backend (`lobby`, `survival`).
-
-Official backend downloads:
-
-- **Paper (recommended):** https://papermc.io/downloads/paper
-- **Spigot/BuildTools:** https://www.spigotmc.org/wiki/buildtools/
+## Start the network
 
 ```bash
-cd ~/mc-network/lobby
-# place paper.jar here
-java -Xms1G -Xmx3G -jar paper.jar
+cd mc-network
+./start-all.sh
 ```
 
-Accept EULA:
+Tmux sessions created:
+
+- `mc-lobby`
+- `mc-survival`
+- `mc-proxy`
+
+Attach to console:
 
 ```bash
-echo "eula=true" > eula.txt
+tmux attach -t mc-proxy
 ```
 
-Start again once, then stop and edit configs.
+Stop all sessions:
 
-### Backend `server.properties`
-
-Set for each backend:
-
-```properties
-server-port=25566
-online-mode=false
-motd=Lobby
+```bash
+./stop-all.sh
 ```
-
-For survival, use `server-port=25567`.
-
-### Backend `spigot.yml`
-
-```yaml
-settings:
-  bungeecord: true
-```
-
-> `online-mode=false` is required behind a Bungee-style proxy. Do **not** expose backend ports publicly.
 
 ---
 
-## 4) Add Java + Bedrock bridge plugins
+## Bedrock support (Geyser + Floodgate)
 
-### On Proxy
+After first proxy boot, Geyser generates config files under:
 
-Install these plugins in `~/mc-network/proxy/plugins`:
+- `mc-network/proxy/plugins/Geyser-BungeeCord/`
 
-- **Geyser-Bungee:** https://geysermc.org/download
-- **Floodgate-Bungee:** https://geysermc.org/download
+Recommended check in `config.yml`:
 
-Then restart proxy once so configs generate.
+- `auth-type: floodgate`
+- Bedrock port (`19132/udp`) open in firewall
 
-Edit Geyser config (`plugins/Geyser-Bungee/config.yml`):
-
-- `auth-type: floodgate` (for easy Bedrock login)
-- Set Bedrock listening port (default often `19132`)
-- Confirm remote target is the proxy backend handling
-
-Floodgate usually works with default generated keys/config.
-
-### Optional compatibility plugins
-
-Useful for mixed versions and smoother experience:
-
-- ViaVersion (proxy/backend as needed): https://hangar.papermc.io/ViaVersion/ViaVersion
-- ViaBackwards: https://hangar.papermc.io/ViaVersion/ViaBackwards
-- ViaRewind: https://hangar.papermc.io/ViaVersion/ViaRewind
+Floodgate key/config files are generated automatically on first run.
 
 ---
 
-## 5) Open firewall ports
+## Firewall (recommended)
 
-Public:
-
-- TCP `25565` (Java players via proxy)
-- UDP `19132` (Bedrock players via Geyser)
-
-Keep backend ports (`25566`, `25567`, etc.) blocked externally.
-
-Example `ufw`:
+Expose only proxy + Bedrock ports publicly:
 
 ```bash
 sudo ufw allow 25565/tcp
@@ -200,95 +124,12 @@ sudo ufw enable
 sudo ufw status
 ```
 
----
-
-## 6) Start order
-
-1. Start backend servers first (lobby/survival)
-2. Start proxy second
-
-Example with `screen`:
-
-```bash
-screen -S lobby
-cd ~/mc-network/lobby
-java -Xms1G -Xmx3G -jar paper.jar
-```
-
-Create separate sessions for survival + proxy.
+Keep backend ports (`25566`, `25567`) private.
 
 ---
 
-## 7) DNS (optional but recommended)
+## Notes
 
-- Create an `A` record: `play.yourdomain.com -> your_server_ip`
-- Point Java users to `play.yourdomain.com:25565`
-- Point Bedrock users to same host + UDP port `19132`
-
----
-
-## 8) Fast production checklist
-
-- [ ] `ip_forward: true` on proxy
-- [ ] `bungeecord: true` on every backend
-- [ ] `online-mode=false` on backends only
-- [ ] Backend ports not publicly exposed
-- [ ] Geyser + Floodgate installed and configured
-- [ ] Regular backups of world folders
-- [ ] Restart scripts/service files created
-- [ ] Test Java and Bedrock joins before launch
-
----
-
-## 9) Recommended extras
-
-- **LuckPerms** (permissions)
-- **EssentialsX** (commands, homes, warps)
-- **CoreProtect** (rollback / logging)
-- **spark** (performance profiling)
-- **Plan** (analytics)
-
-Download hubs for common plugins:
-
-- Hangar: https://hangar.papermc.io/
-- Modrinth (plugins): https://modrinth.com/plugins
-- SpigotMC resources: https://www.spigotmc.org/resources/
-
----
-
-## 10) Troubleshooting quick hits
-
-### Bedrock cannot join
-
-- Verify UDP `19132` is open.
-- Ensure Geyser is installed on proxy and running.
-- Confirm `auth-type` and Floodgate pairing are correct.
-
-### Java joins proxy but not backend
-
-- Check backend server is online on correct local port.
-- Verify proxy `config.yml` server addresses.
-- Confirm backend `online-mode=false` and `bungeecord: true`.
-
-### “IP forwarding” or UUID issues
-
-- Re-check proxy `ip_forward: true`
-- Re-check backend `spigot.yml` bungeecord setting
-
----
-
-## Security notes
-
-- Never expose backend ports publicly.
-- Keep Java/plugins updated.
-- Run as a non-root user.
-- Make automated backups before updates.
-
----
-
-If you want, this repo can also include:
-
-- ready-to-use startup scripts
-- systemd service files
-- a plugin baseline pack list
-- a preflight validation script for common config mistakes
+- Backends are intentionally `online-mode=false` because authentication is handled by proxy.
+- Proxy has `ip_forward: true` and backends have `settings.bungeecord: true`.
+- For internet-facing deployments, run behind a reverse proxy/firewall and consider anti-bot/proxy protections.
