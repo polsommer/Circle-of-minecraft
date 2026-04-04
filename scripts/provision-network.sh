@@ -43,6 +43,35 @@ fi
 
 mkdir -p "$PROXY_DIR/plugins" "$LOBBY_DIR" "$SURVIVAL_DIR" "$BACKUP_DIR"
 
+archive_and_remove_if_present() {
+  local file_path="$1"
+  local base_dir="$2"
+  local label="$3"
+  if [[ -f "$file_path" ]]; then
+    local rel_path
+    rel_path="${file_path#"$base_dir"/}"
+    local backup_name
+    backup_name="$(echo "$rel_path" | tr '/' '_')"
+    cp "$file_path" "$BACKUP_DIR/${label}-${backup_name}.bak"
+    rm -f "$file_path"
+    echo "Removed stale $label config: $rel_path (backup saved in $BACKUP_DIR)"
+  fi
+}
+
+reset_incompatible_paper_configs() {
+  local server_dir="$1"
+  local server_label="$2"
+
+  # Paper's config schema can change between releases. Older files may include
+  # string values (for example "default") that newer builds can no longer parse,
+  # which causes boot-time crashes before the server starts listening.
+  archive_and_remove_if_present "$server_dir/config/paper-global.yml" "$server_dir" "$server_label"
+  archive_and_remove_if_present "$server_dir/config/paper-world-defaults.yml" "$server_dir" "$server_label"
+}
+
+reset_incompatible_paper_configs "$LOBBY_DIR" "lobby"
+reset_incompatible_paper_configs "$SURVIVAL_DIR" "survival"
+
 validate_jar() {
   local jar_path="$1"
   local component_name="$2"
