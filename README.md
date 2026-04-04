@@ -89,6 +89,9 @@ Useful knobs:
 - `JAVA_SURVIVAL_MEM` (default: `-Xms1G -Xmx4G`)
 - `PROXY_LISTEN_IP` (default: `192.168.88.100`)
   - If this IP is not present on the machine, provisioning falls back to `0.0.0.0` so the proxy still starts.
+- `BACKEND_START_TIMEOUT` (default in `start-all.sh`: `240` seconds)
+  - Increase this if first boot is slow (chunk generation/plugins), for example:
+    `BACKEND_START_TIMEOUT=420 ./start-all.sh`
 - `PRESERVE_EXISTING_JARS=1` (default: `0`)
   - By default, provisioning refreshes Waterfall/Paper jars to the resolved latest build each run.
   - Set to `1` only if you intentionally want to keep already-downloaded jar files.
@@ -212,3 +215,8 @@ If the proxy log includes `finishConnect(..) failed: Connection refused: /127.0.
    ```
 
    Common causes are Java version mismatch, plugin crashes, or an existing process already using `25566/25567`.
+4. If `start-all.sh` reports a backend timeout, it now prints the last backend log lines automatically. You can also increase wait time:
+
+   ```bash
+   BACKEND_START_TIMEOUT=420 ./start-all.sh
+   ```
