@@ -296,9 +296,27 @@ if ! command -v tmux >/dev/null 2>&1; then
   exit 1
 fi
 
+wait_for_port() {
+  local host="$1"
+  local port="$2"
+  local name="$3"
+  local timeout_seconds="${4:-90}"
+  local elapsed=0
+
+  while ! (echo >"/dev/tcp/$host/$port") >/dev/null 2>&1; do
+    sleep 1
+    elapsed=$((elapsed + 1))
+    if (( elapsed >= timeout_seconds )); then
+      echo "Timed out waiting for $name on $host:$port after ${timeout_seconds}s." >&2
+      return 1
+    fi
+  done
+}
+
 tmux new-session -d -s mc-lobby "$BASE_DIR/lobby/run.sh"
 tmux new-session -d -s mc-survival "$BASE_DIR/survival/run.sh"
-sleep 4
+wait_for_port 127.0.0.1 25566 "lobby backend"
+wait_for_port 127.0.0.1 25567 "survival backend"
 tmux new-session -d -s mc-proxy "$BASE_DIR/proxy/run.sh"
 
 echo "Started sessions: mc-lobby, mc-survival, mc-proxy"
