@@ -26,9 +26,18 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! ip -4 addr show | grep -Fq "inet ${PROXY_LISTEN_IP}/"; then
-  echo "Warning: PROXY_LISTEN_IP ${PROXY_LISTEN_IP} is not configured on this host. Falling back to 0.0.0.0."
-  PROXY_BIND_ADDRESS="0.0.0.0"
+if ! command -v curl >/dev/null 2>&1; then
+  echo "curl is required for downloading server jars/plugins." >&2
+  exit 1
+fi
+
+if command -v ip >/dev/null 2>&1; then
+  if ! ip -4 addr show | grep -Fq "inet ${PROXY_LISTEN_IP}/"; then
+    echo "Warning: PROXY_LISTEN_IP ${PROXY_LISTEN_IP} is not configured on this host. Falling back to 0.0.0.0."
+    PROXY_BIND_ADDRESS="0.0.0.0"
+  fi
+else
+  echo "Warning: 'ip' command not found; skipping PROXY_LISTEN_IP validation."
 fi
 
 mkdir -p "$PROXY_DIR/plugins" "$LOBBY_DIR" "$SURVIVAL_DIR" "$BACKUP_DIR"
@@ -40,27 +49,31 @@ resolve_latest_build() {
 import json
 import sys
 import urllib.request
+import urllib.error
 
 project = sys.argv[1]
 forced_version = sys.argv[2]
 base = f"https://api.papermc.io/v2/projects/{project}"
 
-with urllib.request.urlopen(base, timeout=30) as r:
-    meta = json.load(r)
+try:
+    with urllib.request.urlopen(base, timeout=30) as r:
+        meta = json.load(r)
 
-version = forced_version or meta["versions"][-1]
-with urllib.request.urlopen(f"{base}/versions/{version}", timeout=30) as r:
-    ver_meta = json.load(r)
+    version = forced_version or meta["versions"][-1]
+    with urllib.request.urlopen(f"{base}/versions/{version}", timeout=30) as r:
+        ver_meta = json.load(r)
 
-build = ver_meta["builds"][-1]
-if project == "paper":
-    jar = f"paper-{version}-{build}.jar"
-else:
-    jar = f"waterfall-{version}-{build}.jar"
+    build = ver_meta["builds"][-1]
+    if project == "paper":
+        jar = f"paper-{version}-{build}.jar"
+    else:
+        jar = f"waterfall-{version}-{build}.jar"
 
-print(version)
-print(build)
-print(jar)
+    print(version)
+    print(build)
+    print(jar)
+except (urllib.error.URLError, TimeoutError, KeyError, IndexError, ValueError):
+    raise SystemExit(1)
 PY
 }
 
@@ -70,6 +83,10 @@ download_if_missing() {
   local forced_version="$3"
 
   mapfile -t build_info < <(resolve_latest_build "$project" "$forced_version")
+  if (( ${#build_info[@]} < 3 )); then
+    echo "Error: failed to resolve latest $project build metadata." >&2
+    return 1
+  fi
   local version="${build_info[0]}"
   local build="${build_info[1]}"
   local jar_name="${build_info[2]}"
@@ -88,13 +105,65 @@ download_if_missing() {
 download_if_missing "waterfall" "$PROXY_DIR" "$WATERFALL_VERSION"
 download_if_missing "paper" "$LOBBY_DIR" "$PAPER_VERSION"
 download_if_missing "paper" "$SURVIVAL_DIR" "$PAPER_VERSION"
+rm -f "$PROXY_DIR/plugins"/Geyser-*.jar "$PROXY_DIR/plugins"/floodgate-*.jar
 
-if [[ -f "$PWD/Geyser-BungeeCord.jar" ]]; then
-  cp "$PWD/Geyser-BungeeCord.jar" "$PROXY_DIR/plugins/"
-fi
-if [[ -f "$PWD/floodgate-bungee.jar" ]]; then
-  cp "$PWD/floodgate-bungee.jar" "$PROXY_DIR/plugins/"
-fi
+download_plugin_from_modrinth() {
+  local project_id="$1"
+  local destination="$2"
+  local fallback_local_jar="$3"
+
+  local plugin_jar
+  plugin_jar="$(python3 - "$project_id" <<'PY'
+import json
+import sys
+import urllib.request
+import urllib.error
+
+project_id = sys.argv[1]
+url = f"https://api.modrinth.com/v2/project/{project_id}/version"
+req = urllib.request.Request(url, headers={"User-Agent": "circle-of-minecraft/1.0"})
+try:
+    with urllib.request.urlopen(req, timeout=30) as response:
+        versions = json.load(response)
+
+    if not versions:
+        raise SystemExit(1)
+
+    for version in versions:
+        if version.get("status") != "listed":
+            continue
+        for f in version.get("files", []):
+            filename = f.get("filename", "")
+            if filename.endswith(".jar") and f.get("url"):
+                print(f"{filename}|{f['url']}")
+                raise SystemExit(0)
+except (urllib.error.URLError, TimeoutError, KeyError, ValueError):
+    raise SystemExit(1)
+raise SystemExit(1)
+PY
+)" || true
+
+  if [[ -n "$plugin_jar" ]]; then
+    local jar_name jar_url
+    jar_name="${plugin_jar%%|*}"
+    jar_url="${plugin_jar#*|}"
+    echo "Downloading latest $project_id plugin: $jar_name"
+    curl -fsSL "$jar_url" -o "$destination/$jar_name"
+    return 0
+  fi
+
+  if [[ -f "$fallback_local_jar" ]]; then
+    echo "Warning: could not resolve latest $project_id from Modrinth, using bundled $(basename "$fallback_local_jar")."
+    cp "$fallback_local_jar" "$destination/"
+    return 0
+  fi
+
+  echo "Error: failed to download $project_id plugin and no fallback jar found at $fallback_local_jar" >&2
+  return 1
+}
+
+download_plugin_from_modrinth "geyser" "$PROXY_DIR/plugins" "$PWD/Geyser-BungeeCord.jar"
+download_plugin_from_modrinth "floodgate" "$PROXY_DIR/plugins" "$PWD/floodgate-bungee.jar"
 
 cat > "$PROXY_DIR/config.yml" <<YAML
 listeners:
