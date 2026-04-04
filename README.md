@@ -12,7 +12,9 @@ A quick-start toolkit for running a **Java + Bedrock Minecraft network** on Linu
 
 - Automated provisioning script that:
   - Downloads latest Waterfall + Paper builds from PaperMC
+  - Aligns Paper backend version to Waterfall version by default (prevents proxy/backend protocol mismatch)
   - Downloads latest Geyser + Floodgate proxy plugins from Modrinth
+  - Downloads ViaVersion on the proxy to allow broader Java client compatibility
   - Creates proxy/lobby/survival structure
   - Sets Bungee-compatible backend settings
   - Falls back to bundled `Geyser-BungeeCord.jar` and `floodgate-bungee.jar` only if plugin API lookup fails
@@ -80,7 +82,7 @@ NETWORK_DIR=/srv/mc-network PAPER_VERSION=1.21.4 ./scripts/provision-network.sh
 Useful knobs:
 
 - `NETWORK_DIR` (default: `./mc-network`)
-- `PAPER_VERSION` (default: latest stable from PaperMC)
+- `PAPER_VERSION` (default: same Minecraft version as resolved Waterfall build)
 - `WATERFALL_VERSION` (default: latest stable from PaperMC)
 - `JAVA_PROXY_MEM` (default: `-Xms512M -Xmx1G`)
 - `JAVA_LOBBY_MEM` (default: `-Xms1G -Xmx3G`)
