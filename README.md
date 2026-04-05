@@ -127,14 +127,15 @@ Stop all sessions:
 
 ## Bedrock support (Geyser + Floodgate)
 
-After first proxy boot, Geyser generates config files under:
-
-- `mc-network/proxy/plugins/Geyser-BungeeCord/`
-
-Recommended check in `config.yml`:
+Provisioning now bootstraps `mc-network/proxy/plugins/Geyser-BungeeCord/config.yml` automatically with:
 
 - `auth-type: floodgate`
-- Bedrock port (`19132/udp`) open in firewall
+- Bedrock listener on `0.0.0.0:19132`
+- Remote target `127.0.0.1:25565` (your Waterfall proxy)
+
+You can still customize this file later under:
+
+- `mc-network/proxy/plugins/Geyser-BungeeCord/`
 
 Floodgate key/config files are generated automatically on first run.
 
