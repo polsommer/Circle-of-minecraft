@@ -87,9 +87,8 @@ Useful knobs:
 - `JAVA_PROXY_MEM` (default: `-Xms512M -Xmx1G`)
 - `JAVA_LOBBY_MEM` (default: `-Xms1G -Xmx3G`)
 - `JAVA_SURVIVAL_MEM` (default: `-Xms1G -Xmx4G`)
-- `PROXY_LISTEN_IP` (default: `0.0.0.0`)
-  - Set this only if you want the proxy bound to a specific interface IP.
-  - If the chosen IP is not present on the machine, provisioning falls back to `0.0.0.0` so the proxy still starts.
+- `PROXY_LISTEN_IP` (default: `192.168.88.100`)
+  - If this IP is not present on the machine, provisioning falls back to `0.0.0.0` so the proxy still starts.
 - `BACKEND_START_TIMEOUT` (default in `start-all.sh`: `240` seconds)
   - Increase this if first boot is slow (chunk generation/plugins), for example:
     `BACKEND_START_TIMEOUT=420 ./start-all.sh`
