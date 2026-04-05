@@ -195,7 +195,7 @@ If players see **“Outdated server/client”** when joining:
    ```
 
 3. Confirm the client version:
-   - **Java:** ViaVersion helps old/new Java clients, but very old versions can still fail depending on protocol gaps.
+   - **Java:** `1.21` clients cannot natively join a `1.21.4` backend without protocol translation. This provisioning script installs ViaVersion on both proxy and Paper backends so `1.21.x` patch mismatches are handled automatically after reprovisioning/restart.
    - **Bedrock:** Ensure Geyser is loaded in `mc-network/proxy/plugins/` and UDP `19132` is open.
 
 4. If you intentionally pinned old jars, remove `PRESERVE_EXISTING_JARS=1` and provision again.
