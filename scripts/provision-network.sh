@@ -492,6 +492,21 @@ kill_stale_backend_processes() {
   fi
 }
 
+clear_world_locks() {
+  local backend_name="$1"
+  rm -f \
+    "$BASE_DIR/$backend_name/world/session.lock" \
+    "$BASE_DIR/$backend_name/world_nether/session.lock" \
+    "$BASE_DIR/$backend_name/world_the_end/session.lock"
+}
+
+kill_listener_on_port() {
+  local port="$1"
+  if command -v fuser >/dev/null 2>&1; then
+    fuser -k "${port}/tcp" 2>/dev/null || true
+  fi
+}
+
 wait_for_port() {
   local host="$1"
   local port="$2"
@@ -526,6 +541,10 @@ ensure_session_absent mc-survival
 ensure_session_absent mc-proxy
 kill_stale_backend_processes lobby
 kill_stale_backend_processes survival
+kill_listener_on_port 25566
+kill_listener_on_port 25567
+clear_world_locks lobby
+clear_world_locks survival
 
 tmux new-session -d -s mc-lobby "$BASE_DIR/lobby/run.sh"
 tmux new-session -d -s mc-survival "$BASE_DIR/survival/run.sh"
@@ -550,6 +569,13 @@ if command -v pkill >/dev/null 2>&1; then
   pkill -f "$BASE_DIR/lobby/run.sh|$BASE_DIR/lobby/server.jar" 2>/dev/null || true
   pkill -f "$BASE_DIR/survival/run.sh|$BASE_DIR/survival/server.jar" 2>/dev/null || true
   pkill -f "$BASE_DIR/proxy/run.sh|$BASE_DIR/proxy/server.jar" 2>/dev/null || true
+fi
+
+if command -v fuser >/dev/null 2>&1; then
+  fuser -k 25565/tcp 2>/dev/null || true
+  fuser -k 25566/tcp 2>/dev/null || true
+  fuser -k 25567/tcp 2>/dev/null || true
+  fuser -k 19132/udp 2>/dev/null || true
 fi
 
 echo "Stopped mc-proxy, mc-lobby, mc-survival (if running)."
