@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const { MetricsCollector } = require('./metrics/collector');
 
 const app = express();
 app.use(express.json());
@@ -14,6 +15,17 @@ const networkDir = process.env.MC_NETWORK_DIR || path.join(repoRoot, 'mc-network
 const ALLOWED_SERVERS = ['proxy', 'lobby', 'survival'];
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+const metricsCollector = new MetricsCollector({ servers: ALLOWED_SERVERS });
+const sseClients = new Set();
+
+metricsCollector.onUpdate((event) => {
+  const payload = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
+  for (const response of sseClients) {
+    response.write(payload);
+  }
+});
+metricsCollector.start();
 
 function fileExists(filePath) {
   try {
@@ -170,9 +182,68 @@ app.post('/api/servers/:name/:action(start|stop|restart)', async (req, res) => {
   }
 });
 
+app.get('/api/metrics/timeseries', (req, res) => {
+  const { server, window } = req.query;
+
+  if (!server || !validateServer(server)) {
+    return res.status(400).json({
+      error: 'Query parameter "server" must be one of proxy,lobby,survival'
+    });
+  }
+
+  const series = metricsCollector.getTimeseries(server, window);
+  return res.json(series);
+});
+
+app.get('/api/players/online', (req, res) => {
+  return res.json({
+    online: metricsCollector.getPlayersOnline(),
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/api/players/by-server', (req, res) => {
+  return res.json({
+    byServer: metricsCollector.getPlayersByServer(),
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/ws', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const initPayload = {
+    online: metricsCollector.getPlayersOnline(),
+    byServer: metricsCollector.getPlayersByServer(),
+    timestamp: new Date().toISOString()
+  };
+  res.write(`event: players\ndata: ${JSON.stringify(initPayload)}\n\n`);
+
+  sseClients.add(res);
+
+  req.on('close', () => {
+    sseClients.delete(res);
+  });
+});
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
+
+function shutdown() {
+  metricsCollector.stop();
+  for (const client of sseClients) {
+    client.end();
+  }
+  sseClients.clear();
+  process.exit(0);
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 
 app.listen(ADMIN_UI_PORT, ADMIN_UI_HOST, () => {
   console.log(`admin-ui listening on http://${ADMIN_UI_HOST}:${ADMIN_UI_PORT}`);
