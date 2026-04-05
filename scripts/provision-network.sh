@@ -149,7 +149,19 @@ try:
     with urllib.request.urlopen(base, timeout=30) as r:
         meta = json.load(r)
 
-    version = forced_version or meta["versions"][-1]
+    versions = meta["versions"]
+    version = versions[-1]
+    if forced_version:
+        if forced_version in versions:
+            version = forced_version
+        else:
+            prefix = f"{forced_version}."
+            compatible = [candidate for candidate in versions if candidate.startswith(prefix)]
+            if compatible:
+                version = compatible[-1]
+            else:
+                raise SystemExit(1)
+
     with urllib.request.urlopen(f"{base}/versions/{version}", timeout=30) as r:
         ver_meta = json.load(r)
 
@@ -212,8 +224,15 @@ download_if_missing() {
 if [[ -z "$PAPER_VERSION" ]]; then
   mapfile -t waterfall_build_info < <(resolve_latest_build "waterfall" "$WATERFALL_VERSION") || true
   if (( ${#waterfall_build_info[@]} >= 1 )); then
-    PAPER_VERSION="${waterfall_build_info[0]}"
-    echo "PAPER_VERSION not set; matching backend version to Waterfall: $PAPER_VERSION"
+    WATERFALL_RESOLVED_VERSION="${waterfall_build_info[0]}"
+    mapfile -t aligned_paper_build_info < <(resolve_latest_build "paper" "$WATERFALL_RESOLVED_VERSION") || true
+    if (( ${#aligned_paper_build_info[@]} >= 1 )); then
+      PAPER_VERSION="${aligned_paper_build_info[0]}"
+      echo "PAPER_VERSION not set; matching backend version to Waterfall line ${WATERFALL_RESOLVED_VERSION} -> Paper ${PAPER_VERSION}"
+    else
+      PAPER_VERSION="$WATERFALL_RESOLVED_VERSION"
+      echo "Warning: failed to align Paper patch version for Waterfall line ${WATERFALL_RESOLVED_VERSION}; falling back to ${PAPER_VERSION}."
+    fi
   else
     echo "Warning: failed to resolve Waterfall version for Paper alignment; resolving Paper version independently."
   fi
