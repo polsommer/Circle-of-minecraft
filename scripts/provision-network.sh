@@ -41,7 +41,7 @@ else
   echo "Warning: 'ip' command not found; skipping PROXY_LISTEN_IP validation."
 fi
 
-mkdir -p "$PROXY_DIR/plugins" "$LOBBY_DIR" "$SURVIVAL_DIR" "$BACKUP_DIR"
+mkdir -p "$PROXY_DIR/plugins" "$LOBBY_DIR/plugins" "$SURVIVAL_DIR/plugins" "$BACKUP_DIR"
 
 archive_and_remove_if_present() {
   local file_path="$1"
@@ -243,6 +243,7 @@ download_if_missing "paper" "$LOBBY_DIR" "$PAPER_VERSION"
 download_if_missing "paper" "$SURVIVAL_DIR" "$PAPER_VERSION"
 rm -f "$PROXY_DIR/plugins"/Geyser-*.jar "$PROXY_DIR/plugins"/floodgate-*.jar
 rm -f "$PROXY_DIR/plugins"/ViaVersion-*.jar
+rm -f "$LOBBY_DIR/plugins"/ViaVersion-*.jar "$SURVIVAL_DIR/plugins"/ViaVersion-*.jar
 
 download_plugin_from_modrinth() {
   local project_id="$1"
@@ -365,6 +366,8 @@ PY
 download_plugin_from_modrinth "geyser" "$PROXY_DIR/plugins" "$PWD/Geyser-BungeeCord.jar" 1 "bungeecord,waterfall,velocity" "$PAPER_VERSION"
 download_plugin_from_modrinth "floodgate" "$PROXY_DIR/plugins" "$PWD/floodgate-bungee.jar" 1 "bungeecord,waterfall,velocity" "$PAPER_VERSION"
 download_plugin_from_modrinth "viaversion" "$PROXY_DIR/plugins" "" 0 "bungeecord,waterfall,velocity" "$PAPER_VERSION"
+download_plugin_from_modrinth "viaversion" "$LOBBY_DIR/plugins" "" 0 "paper,purpur,spigot,bukkit" "$PAPER_VERSION"
+download_plugin_from_modrinth "viaversion" "$SURVIVAL_DIR/plugins" "" 0 "paper,purpur,spigot,bukkit" "$PAPER_VERSION"
 
 cat > "$PROXY_DIR/config.yml" <<YAML
 listeners:
