@@ -47,3 +47,10 @@ npm start
 ```
 
 The command runner never executes raw user input. It resolves commands only from a strict allowlist of script paths under `mc-network/`.
+
+## Role enforcement
+
+Pass `x-role: admin` (or `?role=admin`) for destructive actions.
+
+- `POST /api/servers/:name/restart` requires admin.
+- `DELETE /api/servers/:name/plugins/:plugin` requires admin.

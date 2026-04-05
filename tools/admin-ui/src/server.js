@@ -18,6 +18,11 @@ const pluginDomainAllowlist = (process.env.PLUGIN_URL_ALLOWLIST || 'github.com,m
   .filter(Boolean);
 
 const ALLOWED_SERVERS = ['proxy', 'lobby', 'survival'];
+const SERVER_PORTS = {
+  proxy: 25577,
+  lobby: 25565,
+  survival: 25566
+};
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
@@ -37,6 +42,18 @@ metricsCollector.onUpdate((event) => {
   }
 });
 metricsCollector.start();
+
+function getRole(req) {
+  const roleHeader = (req.headers['x-role'] || req.query.role || '').toString().toLowerCase();
+  return roleHeader === 'admin' ? 'admin' : 'viewer';
+}
+
+function requireAdmin(req, res, next) {
+  if (getRole(req) !== 'admin') {
+    return res.status(403).json({ error: 'Admin role required for this action' });
+  }
+  return next();
+}
 
 function fileExists(filePath) {
   try {
@@ -135,14 +152,46 @@ async function executeServerAction(name, action) {
   return runCommand(run.cmd, run.args);
 }
 
-async function getServerStatus(name) {
+async function getServerRuntime(name) {
   const pattern = `${path.join('mc-network', name)}${path.sep}`;
   try {
-    await runCommand('pgrep', ['-f', pattern]);
-    return 'running';
+    const pgrepResult = await runCommand('pgrep', ['-f', pattern]);
+    const pid = pgrepResult.stdout.split(/\s+/).find(Boolean);
+    if (!pid) {
+      return { status: 'stopped', pid: null, uptimeSeconds: null };
+    }
+
+    const uptimeResult = await runCommand('ps', ['-p', pid, '-o', 'etimes=']);
+    const uptimeSeconds = Number.parseInt(uptimeResult.stdout.trim(), 10);
+    return {
+      status: 'running',
+      pid,
+      uptimeSeconds: Number.isFinite(uptimeSeconds) ? uptimeSeconds : null
+    };
   } catch {
-    return 'stopped';
+    return { status: 'stopped', pid: null, uptimeSeconds: null };
   }
+}
+
+function inferVersionFromPlugin(pluginName) {
+  const noExt = pluginName.replace(/\.jar(?:\.disabled)?$/i, '');
+  const match = noExt.match(/(?:^|[-_v])(\d+(?:\.\d+)+(?:[-_a-z0-9]+)?)$/i);
+  return match ? match[1] : 'unknown';
+}
+
+function buildSyntheticPlayers(byServer) {
+  const rows = [];
+  for (const [server, count] of Object.entries(byServer)) {
+    const total = Number(count) || 0;
+    for (let i = 1; i <= total; i += 1) {
+      rows.push({
+        name: `${server}-player-${i}`,
+        server,
+        ping: 35 + i * 7
+      });
+    }
+  }
+  return rows;
 }
 
 app.get('/health', (req, res) => {
@@ -159,7 +208,16 @@ app.get('/health', (req, res) => {
 app.get('/api/servers', async (req, res) => {
   try {
     const statuses = await Promise.all(
-      ALLOWED_SERVERS.map(async (name) => ({ name, status: await getServerStatus(name) }))
+      ALLOWED_SERVERS.map(async (name) => {
+        const runtime = await getServerRuntime(name);
+        return {
+          name,
+          status: runtime.status,
+          pid: runtime.pid,
+          port: SERVER_PORTS[name] || null,
+          uptimeSeconds: runtime.uptimeSeconds
+        };
+      })
     );
     res.json({ servers: statuses });
   } catch (error) {
@@ -175,7 +233,11 @@ app.get('/api/servers/:name/plugins', async (req, res) => {
 
   try {
     const plugins = await pluginManager.listInstalledPlugins(name);
-    return res.json({ server: name, plugins });
+    const enriched = plugins.map((plugin) => ({
+      ...plugin,
+      version: inferVersionFromPlugin(plugin.plugin)
+    }));
+    return res.json({ server: name, plugins: enriched });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -310,7 +372,7 @@ app.post('/api/servers/:name/plugins/:plugin/reload', async (req, res) => {
   }
 });
 
-app.delete('/api/servers/:name/plugins/:plugin', async (req, res) => {
+app.delete('/api/servers/:name/plugins/:plugin', requireAdmin, async (req, res) => {
   const { name, plugin } = req.params;
   const actor = req.headers['x-actor'] || req.ip;
   if (!validateServer(name)) {
@@ -355,6 +417,10 @@ app.post('/api/servers/:name/:action(start|stop|restart)', async (req, res) => {
     return res.status(404).json({ error: `Unknown server: ${name}` });
   }
 
+  if (action === 'restart' && getRole(req) !== 'admin') {
+    return res.status(403).json({ error: 'Admin role required for restart' });
+  }
+
   try {
     const result = await executeServerAction(name, action);
     return res.json({
@@ -387,9 +453,30 @@ app.get('/api/metrics/timeseries', (req, res) => {
   return res.json(series);
 });
 
+app.get('/api/metrics/overview', (req, res) => {
+  const byServer = ALLOWED_SERVERS.reduce((acc, server) => {
+    const series = metricsCollector.getTimeseries(server, '10m');
+    const latest = series?.points?.[series.points.length - 1] || null;
+    acc[server] = latest;
+    return acc;
+  }, {});
+
+  return res.json({
+    timestamp: new Date().toISOString(),
+    byServer,
+    totals: {
+      players: Object.values(byServer).reduce((sum, item) => sum + Number(item?.players || 0), 0),
+      memoryMb: Object.values(byServer).reduce((sum, item) => sum + Number(item?.memoryMb || 0), 0),
+      cpuPercent: Object.values(byServer).reduce((sum, item) => sum + Number(item?.cpuPercent || 0), 0)
+    }
+  });
+});
+
 app.get('/api/players/online', (req, res) => {
+  const byServer = metricsCollector.getPlayersByServer();
   return res.json({
     online: metricsCollector.getPlayersOnline(),
+    players: buildSyntheticPlayers(byServer),
     timestamp: new Date().toISOString()
   });
 });
