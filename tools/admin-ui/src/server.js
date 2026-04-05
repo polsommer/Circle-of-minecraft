@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { MetricsCollector } = require('./metrics/collector');
+const { PluginManager } = require('./plugins.manager');
 
 const app = express();
 app.use(express.json());
@@ -11,6 +12,10 @@ const ADMIN_UI_HOST = process.env.ADMIN_UI_HOST || '192.168.88.100';
 const ADMIN_UI_PORT = Number(process.env.ADMIN_UI_PORT || 7070);
 const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const networkDir = process.env.MC_NETWORK_DIR || path.join(repoRoot, 'mc-network');
+const pluginDomainAllowlist = (process.env.PLUGIN_URL_ALLOWLIST || 'github.com,modrinth.com,cdn.modrinth.com,hangarcdn.papermc.io')
+  .split(',')
+  .map((item) => item.trim())
+  .filter(Boolean);
 
 const ALLOWED_SERVERS = ['proxy', 'lobby', 'survival'];
 
@@ -18,6 +23,12 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 const metricsCollector = new MetricsCollector({ servers: ALLOWED_SERVERS });
 const sseClients = new Set();
+const pluginManager = new PluginManager({
+  networkDir,
+  allowedServers: ALLOWED_SERVERS,
+  executeServerAction,
+  allowlistedDomains: pluginDomainAllowlist
+});
 
 metricsCollector.onUpdate((event) => {
   const payload = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
@@ -156,6 +167,187 @@ app.get('/api/servers', async (req, res) => {
   }
 });
 
+app.get('/api/servers/:name/plugins', async (req, res) => {
+  const { name } = req.params;
+  if (!validateServer(name)) {
+    return res.status(404).json({ error: `Unknown server: ${name}` });
+  }
+
+  try {
+    const plugins = await pluginManager.listInstalledPlugins(name);
+    return res.json({ server: name, plugins });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post(
+  '/api/servers/:name/plugins/upload',
+  express.raw({ type: ['application/java-archive', 'application/octet-stream'], limit: '250mb' }),
+  async (req, res) => {
+    const { name } = req.params;
+    const actor = req.headers['x-actor'] || req.ip;
+    const filename = req.query.filename || req.headers['x-plugin-filename'];
+    if (!validateServer(name)) {
+      return res.status(404).json({ error: `Unknown server: ${name}` });
+    }
+
+    try {
+      const staged = await pluginManager.stageUpload({
+        server: name,
+        filename,
+        sourceBuffer: req.body
+      });
+
+      const result = await pluginManager.applyStagedPlugin({
+        actor,
+        server: name,
+        pluginName: staged.pluginName,
+        stagedPath: staged.stagedPath
+      });
+      return res.json(result);
+    } catch (error) {
+      await pluginManager.audit({
+        actor,
+        action: 'upload-install',
+        server: name,
+        plugin: filename || '-',
+        result: `error:${error.message}`
+      });
+      return res.status(400).json({ error: error.message });
+    }
+  }
+);
+
+app.post('/api/servers/:name/plugins/install-from-url', async (req, res) => {
+  const { name } = req.params;
+  const actor = req.headers['x-actor'] || req.ip;
+  const { url } = req.body || {};
+
+  if (!validateServer(name)) {
+    return res.status(404).json({ error: `Unknown server: ${name}` });
+  }
+
+  try {
+    const staged = await pluginManager.stageFromUrl({ server: name, url });
+    const result = await pluginManager.applyStagedPlugin({
+      actor,
+      server: name,
+      pluginName: staged.pluginName,
+      stagedPath: staged.stagedPath
+    });
+    return res.json(result);
+  } catch (error) {
+    await pluginManager.audit({
+      actor,
+      action: 'url-install',
+      server: name,
+      plugin: url || '-',
+      result: `error:${error.message}`
+    });
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/servers/:name/plugins/:plugin/enable', async (req, res) => {
+  const { name, plugin } = req.params;
+  const actor = req.headers['x-actor'] || req.ip;
+  if (!validateServer(name)) {
+    return res.status(404).json({ error: `Unknown server: ${name}` });
+  }
+
+  try {
+    const result = await pluginManager.setPluginEnabled({
+      actor,
+      server: name,
+      pluginName: plugin,
+      enabled: true
+    });
+    return res.json(result);
+  } catch (error) {
+    await pluginManager.audit({ actor, action: 'enable', server: name, plugin, result: `error:${error.message}` });
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/servers/:name/plugins/:plugin/disable', async (req, res) => {
+  const { name, plugin } = req.params;
+  const actor = req.headers['x-actor'] || req.ip;
+  if (!validateServer(name)) {
+    return res.status(404).json({ error: `Unknown server: ${name}` });
+  }
+
+  try {
+    const result = await pluginManager.setPluginEnabled({
+      actor,
+      server: name,
+      pluginName: plugin,
+      enabled: false
+    });
+    return res.json(result);
+  } catch (error) {
+    await pluginManager.audit({ actor, action: 'disable', server: name, plugin, result: `error:${error.message}` });
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/servers/:name/plugins/:plugin/reload', async (req, res) => {
+  const { name, plugin } = req.params;
+  const actor = req.headers['x-actor'] || req.ip;
+  if (!validateServer(name)) {
+    return res.status(404).json({ error: `Unknown server: ${name}` });
+  }
+  try {
+    const result = await pluginManager.reloadPlugin({
+      actor,
+      server: name,
+      pluginName: plugin
+    });
+    return res.json(result);
+  } catch (error) {
+    await pluginManager.audit({ actor, action: 'reload', server: name, plugin, result: `error:${error.message}` });
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.delete('/api/servers/:name/plugins/:plugin', async (req, res) => {
+  const { name, plugin } = req.params;
+  const actor = req.headers['x-actor'] || req.ip;
+  if (!validateServer(name)) {
+    return res.status(404).json({ error: `Unknown server: ${name}` });
+  }
+  try {
+    const result = await pluginManager.removePlugin({
+      actor,
+      server: name,
+      pluginName: plugin
+    });
+    return res.json(result);
+  } catch (error) {
+    await pluginManager.audit({ actor, action: 'remove', server: name, plugin, result: `error:${error.message}` });
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/servers/:name/plugins/:plugin/rollback', async (req, res) => {
+  const { name, plugin } = req.params;
+  const actor = req.headers['x-actor'] || req.ip;
+  if (!validateServer(name)) {
+    return res.status(404).json({ error: `Unknown server: ${name}` });
+  }
+  try {
+    const result = await pluginManager.rollbackLastChange({
+      actor,
+      server: name,
+      pluginName: plugin
+    });
+    return res.json(result);
+  } catch (error) {
+    await pluginManager.audit({ actor, action: 'rollback', server: name, plugin, result: `error:${error.message}` });
+    return res.status(400).json({ error: error.message });
+  }
+});
+
 app.post('/api/servers/:name/:action(start|stop|restart)', async (req, res) => {
   const { name, action } = req.params;
 
@@ -246,5 +438,8 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 app.listen(ADMIN_UI_PORT, ADMIN_UI_HOST, () => {
+  pluginManager.init().catch((error) => {
+    console.error('plugin manager init failed', error);
+  });
   console.log(`admin-ui listening on http://${ADMIN_UI_HOST}:${ADMIN_UI_PORT}`);
 });
