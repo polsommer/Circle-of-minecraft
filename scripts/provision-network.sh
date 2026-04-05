@@ -343,9 +343,9 @@ PY
   return 0
 }
 
-download_plugin_from_modrinth "geyser" "$PROXY_DIR/plugins" "$PWD/Geyser-BungeeCord.jar" 1 "bungeecord,waterfall" "$PAPER_VERSION"
-download_plugin_from_modrinth "floodgate" "$PROXY_DIR/plugins" "$PWD/floodgate-bungee.jar" 1 "bungeecord,waterfall" "$PAPER_VERSION"
-download_plugin_from_modrinth "viaversion" "$PROXY_DIR/plugins" "" 0 "bungeecord,waterfall" "$PAPER_VERSION"
+download_plugin_from_modrinth "geyser" "$PROXY_DIR/plugins" "$PWD/Geyser-BungeeCord.jar" 1 "bungeecord,waterfall,velocity" "$PAPER_VERSION"
+download_plugin_from_modrinth "floodgate" "$PROXY_DIR/plugins" "$PWD/floodgate-bungee.jar" 1 "bungeecord,waterfall,velocity" "$PAPER_VERSION"
+download_plugin_from_modrinth "viaversion" "$PROXY_DIR/plugins" "" 0 "bungeecord,waterfall,velocity" "$PAPER_VERSION"
 
 GEYSER_CONFIG_DIR="$PROXY_DIR/plugins/Geyser-BungeeCord"
 mkdir -p "$GEYSER_CONFIG_DIR"
