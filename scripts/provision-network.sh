@@ -467,6 +467,31 @@ ensure_session_absent() {
   fi
 }
 
+kill_stale_backend_processes() {
+  local backend_name="$1"
+  local run_script="$BASE_DIR/$backend_name/run.sh"
+  local server_jar="$BASE_DIR/$backend_name/server.jar"
+  local pid=""
+  local killed_any=0
+
+  if command -v pgrep >/dev/null 2>&1; then
+    while IFS= read -r pid; do
+      [[ -z "$pid" ]] && continue
+      echo "Killing stale $backend_name process PID $pid before startup."
+      kill "$pid" 2>/dev/null || true
+      killed_any=1
+    done < <(pgrep -f "$run_script|$server_jar" || true)
+  fi
+
+  if (( killed_any == 1 )); then
+    sleep 1
+    while IFS= read -r pid; do
+      [[ -z "$pid" ]] && continue
+      kill -9 "$pid" 2>/dev/null || true
+    done < <(pgrep -f "$run_script|$server_jar" || true)
+  fi
+}
+
 wait_for_port() {
   local host="$1"
   local port="$2"
@@ -499,6 +524,8 @@ wait_for_port() {
 ensure_session_absent mc-lobby
 ensure_session_absent mc-survival
 ensure_session_absent mc-proxy
+kill_stale_backend_processes lobby
+kill_stale_backend_processes survival
 
 tmux new-session -d -s mc-lobby "$BASE_DIR/lobby/run.sh"
 tmux new-session -d -s mc-survival "$BASE_DIR/survival/run.sh"
@@ -513,9 +540,18 @@ EOF_START
 cat > "$NETWORK_DIR/stop-all.sh" <<'EOF_STOP'
 #!/usr/bin/env bash
 set -euo pipefail
+BASE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
 for s in mc-proxy mc-lobby mc-survival; do
   tmux kill-session -t "$s" 2>/dev/null || true
 done
+
+if command -v pkill >/dev/null 2>&1; then
+  pkill -f "$BASE_DIR/lobby/run.sh|$BASE_DIR/lobby/server.jar" 2>/dev/null || true
+  pkill -f "$BASE_DIR/survival/run.sh|$BASE_DIR/survival/server.jar" 2>/dev/null || true
+  pkill -f "$BASE_DIR/proxy/run.sh|$BASE_DIR/proxy/server.jar" 2>/dev/null || true
+fi
+
 echo "Stopped mc-proxy, mc-lobby, mc-survival (if running)."
 EOF_STOP
 
