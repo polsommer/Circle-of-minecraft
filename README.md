@@ -142,16 +142,29 @@ Floodgate key/config files are generated automatically on first run.
 
 ## Firewall (recommended)
 
-Expose only proxy + Bedrock ports publicly:
+For host `192.168.88.100`, expose only intended ports and keep everything else denied.
+
+### LAN-only admin UI + public game ports
 
 ```bash
+# default deny incoming
+sudo ufw default deny incoming
+
+# Java + Bedrock gameplay
 sudo ufw allow 25565/tcp
 sudo ufw allow 19132/udp
+
+# Admin UI is LAN-restricted to 192.168.88.0/24 (host binds to 192.168.88.100)
+sudo ufw allow from 192.168.88.0/24 to 192.168.88.100 port 7070 proto tcp
+
+# NEVER expose backend Paper ports publicly
+# (keep 25566/tcp and 25567/tcp blocked)
+
 sudo ufw enable
-sudo ufw status
+sudo ufw status numbered
 ```
 
-Keep backend ports (`25566`, `25567`) private.
+If you do not need remote Admin UI access, do not add the 7070 rule at all.
 
 ---
 

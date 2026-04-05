@@ -1,0 +1,4 @@
+{
+  "username": "admin",
+  "passwordHash": "scrypt$replace_with_random_salt_hex$replace_with_scrypt_digest_hex"
+}
