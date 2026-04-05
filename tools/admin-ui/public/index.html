@@ -13,7 +13,6 @@
         --muted: #a8b3c9;
         --good: #2ecc71;
         --bad: #ff6b6b;
-        --accent: #5dade2;
       }
       * { box-sizing: border-box; }
       body {
@@ -47,17 +46,57 @@
       .toast { background: #1c2e4f; border: 1px solid #2a4675; padding: 10px 12px; border-radius: 10px; min-width: 220px; }
       .toast.error { border-color: #9f3f4f; }
       .role-badge { font-size: 12px; background: #1d3359; border: 1px solid #2b4c82; padding: 4px 8px; border-radius: 999px; }
+      .top-actions { display: flex; align-items: center; gap: 8px; }
+      .login-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(8, 14, 28, 0.92);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+      }
+      .login-card {
+        background: #101b31;
+        border: 1px solid #233458;
+        border-radius: 12px;
+        padding: 18px;
+        width: min(420px, 92vw);
+      }
+      .login-card label { display: block; margin-bottom: 4px; font-size: 13px; color: #bfd0ef; }
+      .login-card input {
+        width: 100%;
+        margin-bottom: 10px;
+        background: #0b1730;
+        border: 1px solid #27406c;
+        color: #e6edf8;
+        border-radius: 8px;
+        padding: 8px;
+      }
     </style>
   </head>
   <body>
+    <div id="login-overlay" class="login-overlay" hidden>
+      <form id="login-form" class="login-card">
+        <h2>Admin login</h2>
+        <p class="muted">Enter admin credentials to access command and plugin endpoints.</p>
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" required />
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+        <button type="submit">Sign in</button>
+      </form>
+    </div>
+
     <div class="container">
       <div class="header">
         <div>
           <h1>Circle of Minecraft Dashboard</h1>
           <div class="muted">Single-page admin dashboard with live telemetry and controls.</div>
         </div>
-        <div>
-          <span class="role-badge" id="role-badge"></span>
+        <div class="top-actions">
+          <span class="role-badge" id="role-badge">Role: guest</span>
+          <button id="logout-btn" class="danger" hidden>Logout</button>
         </div>
       </div>
 
@@ -111,18 +150,10 @@
     <div class="toast-wrap" id="toasts"></div>
 
     <script>
-      const role = new URLSearchParams(window.location.search).get('role') === 'admin' ? 'admin' : 'viewer';
-      document.getElementById('role-badge').textContent = `Role: ${role}`;
-
       const state = {
+        auth: { role: 'guest', username: null, csrfToken: null },
         servers: {},
-        metrics: {
-          tps: [],
-          mspt: [],
-          players: [],
-          memory: [],
-          cpu: []
-        }
+        metrics: { tps: [], mspt: [], players: [], memory: [], cpu: [] }
       };
 
       function toast(message, kind = 'info') {
@@ -131,6 +162,12 @@
         node.textContent = message;
         document.getElementById('toasts').appendChild(node);
         setTimeout(() => node.remove(), 3500);
+      }
+
+      function setAuthUi() {
+        document.getElementById('role-badge').textContent = `Role: ${state.auth.role}`;
+        document.getElementById('logout-btn').hidden = state.auth.role !== 'admin';
+        document.getElementById('login-overlay').hidden = state.auth.role === 'admin';
       }
 
       function formatUptime(seconds) {
@@ -152,7 +189,6 @@
         const w = canvas.width = canvas.clientWidth * window.devicePixelRatio;
         const h = canvas.height = canvas.clientHeight * window.devicePixelRatio;
         ctx.clearRect(0, 0, w, h);
-
         const points = values.filter((v) => Number.isFinite(v));
         if (!points.length) {
           ctx.fillStyle = '#91a0bf';
@@ -160,7 +196,6 @@
           ctx.fillText('Waiting for telemetry...', 12 * window.devicePixelRatio, 24 * window.devicePixelRatio);
           return;
         }
-
         const maxVal = maxHint || Math.max(...points, 1);
         ctx.strokeStyle = color;
         ctx.lineWidth = 2 * window.devicePixelRatio;
@@ -185,14 +220,7 @@
       function renderStatusCards() {
         const cards = Object.values(state.servers).map((srv) => {
           const up = srv.status === 'running';
-          return `<div class="card">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <strong>${srv.name}</strong>
-              <span class="status-pill ${up ? 'up' : 'down'}">${up ? 'UP' : 'DOWN'}</span>
-            </div>
-            <div class="muted">Port: ${srv.port || '—'}</div>
-            <div class="muted">Uptime: ${formatUptime(srv.uptimeSeconds)}</div>
-          </div>`;
+          return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;"><strong>${srv.name}</strong><span class="status-pill ${up ? 'up' : 'down'}">${up ? 'UP' : 'DOWN'}</span></div><div class="muted">Port: ${srv.port || '—'}</div><div class="muted">Uptime: ${formatUptime(srv.uptimeSeconds)}</div></div>`;
         });
         document.getElementById('status-cards').innerHTML = cards.join('') || '<div class="card">No servers.</div>';
       }
@@ -201,67 +229,43 @@
         const body = document.getElementById('controls-body');
         body.innerHTML = Object.values(state.servers).map((srv) => {
           const statusClass = srv.status === 'running' ? 'up' : 'down';
-          const restartDisabled = role !== 'admin' ? 'disabled title="Admin only"' : '';
-          return `<tr>
-            <td>${srv.name}</td>
-            <td><span class="status-pill ${statusClass}">${srv.status}</span></td>
-            <td class="actions">
-              <button onclick="runServerAction('${srv.name}','start')">Start</button>
-              <button onclick="runServerAction('${srv.name}','stop')">Stop</button>
-              <button class="danger" ${restartDisabled} onclick="runServerAction('${srv.name}','restart', true)">Restart</button>
-            </td>
-          </tr>`;
+          const restartDisabled = state.auth.role !== 'admin' ? 'disabled title="Admin only"' : '';
+          return `<tr><td>${srv.name}</td><td><span class="status-pill ${statusClass}">${srv.status}</span></td><td class="actions"><button onclick="runServerAction('${srv.name}','start')">Start</button><button onclick="runServerAction('${srv.name}','stop')">Stop</button><button class="danger" ${restartDisabled} onclick="runServerAction('${srv.name}','restart', true)">Restart</button></td></tr>`;
         }).join('');
       }
 
       function renderPlayers(players) {
         const body = document.getElementById('players-body');
-        body.innerHTML = players.map((p) => `<tr><td>${p.name}</td><td>${p.server}</td><td>${p.ping ?? '—'} ms</td></tr>`).join('') ||
-          '<tr><td colspan="3" class="muted">No online players.</td></tr>';
+        body.innerHTML = players.map((p) => `<tr><td>${p.name}</td><td>${p.server}</td><td>${p.ping ?? '—'} ms</td></tr>`).join('') || '<tr><td colspan="3" class="muted">No online players.</td></tr>';
       }
 
       function renderPlugins(rows) {
         const body = document.getElementById('plugins-body');
         body.innerHTML = rows.map((row) => {
-          const deleteDisabled = role !== 'admin' ? 'disabled title="Admin only"' : '';
-          return `<tr>
-            <td>${row.server}</td>
-            <td>${row.plugin}</td>
-            <td>${row.version || 'unknown'}</td>
-            <td class="actions">
-              <button onclick="pluginAction('${row.server}','${encodeURIComponent(row.plugin)}','enable')">Enable</button>
-              <button onclick="pluginAction('${row.server}','${encodeURIComponent(row.plugin)}','disable')">Disable</button>
-              <button onclick="pluginAction('${row.server}','${encodeURIComponent(row.plugin)}','reload')">Reload</button>
-              <button class="danger" ${deleteDisabled} onclick="pluginAction('${row.server}','${encodeURIComponent(row.plugin)}','delete', true)">Delete</button>
-            </td>
-          </tr>`;
+          const deleteDisabled = state.auth.role !== 'admin' ? 'disabled title="Admin only"' : '';
+          return `<tr><td>${row.server}</td><td>${row.plugin}</td><td>${row.version || 'unknown'}</td><td class="actions"><button onclick="pluginAction('${row.server}','${encodeURIComponent(row.plugin)}','enable')">Enable</button><button onclick="pluginAction('${row.server}','${encodeURIComponent(row.plugin)}','disable')">Disable</button><button onclick="pluginAction('${row.server}','${encodeURIComponent(row.plugin)}','reload')">Reload</button><button class="danger" ${deleteDisabled} onclick="pluginAction('${row.server}','${encodeURIComponent(row.plugin)}','delete', true)">Delete</button></td></tr>`;
         }).join('') || '<tr><td colspan="4" class="muted">No plugins detected.</td></tr>';
       }
 
       async function api(path, options = {}) {
-        const headers = Object.assign({ 'x-role': role }, options.headers || {});
-        const response = await fetch(path, { ...options, headers });
+        const headers = Object.assign({}, options.headers || {});
+        if (state.auth.csrfToken && ['POST', 'PUT', 'PATCH', 'DELETE'].includes((options.method || 'GET').toUpperCase())) {
+          headers['x-csrf-token'] = state.auth.csrfToken;
+        }
+        const response = await fetch(path, { ...options, credentials: 'include', headers });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || `Request failed (${response.status})`);
         return payload;
       }
 
       async function runServerAction(server, action, destructive = false) {
-        if (destructive) {
-          if (role !== 'admin') {
-            toast('Only admin can run restart.', 'error');
-            return;
-          }
-          if (!confirm(`Confirm ${action} for ${server}?`)) return;
-        }
-
+        if (destructive && !confirm(`Confirm ${action} for ${server}?`)) return;
         const prev = { ...state.servers[server] };
         if (action === 'start') state.servers[server].status = 'running';
         if (action === 'stop') state.servers[server].status = 'stopped';
         if (action === 'restart') state.servers[server].status = 'running';
         renderStatusCards();
         renderControls();
-
         try {
           await api(`/api/servers/${server}/${action}`, { method: 'POST' });
           toast(`${server}: ${action} queued`);
@@ -274,14 +278,7 @@
       }
 
       async function pluginAction(server, plugin, action, destructive = false) {
-        if (destructive) {
-          if (role !== 'admin') {
-            toast('Only admin can delete plugins.', 'error');
-            return;
-          }
-          if (!confirm(`Delete plugin ${decodeURIComponent(plugin)} from ${server}?`)) return;
-        }
-
+        if (destructive && !confirm(`Delete plugin ${decodeURIComponent(plugin)} from ${server}?`)) return;
         try {
           const method = action === 'delete' ? 'DELETE' : 'POST';
           await api(`/api/servers/${server}/plugins/${plugin}/${action === 'delete' ? '' : action}`.replace(/\/$/, ''), { method });
@@ -325,13 +322,29 @@
             const result = await api(`/api/servers/${name}/plugins`);
             (result.plugins || []).forEach((plugin) => all.push({ server: name, ...plugin }));
           } catch {
-            // Keep rendering remaining servers.
           }
         }
         renderPlugins(all);
       }
 
+      async function refreshSession() {
+        try {
+          const session = await api('/api/auth/session');
+          state.auth.role = session.role || 'guest';
+          state.auth.username = session.username;
+          state.auth.csrfToken = session.csrfToken;
+          setAuthUi();
+          return true;
+        } catch {
+          state.auth = { role: 'guest', username: null, csrfToken: null };
+          setAuthUi();
+          return false;
+        }
+      }
+
       async function boot() {
+        const ok = await refreshSession();
+        if (!ok) return;
         await Promise.all([refreshServers(), refreshOverview(), refreshPlayers(), refreshPlugins()]);
         setInterval(() => refreshServers().catch((error) => toast(error.message, 'error')), 8000);
         setInterval(() => refreshOverview().catch(() => {}), 4000);
@@ -339,6 +352,35 @@
         setInterval(() => refreshPlugins().catch(() => {}), 20000);
       }
 
+      document.getElementById('login-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+        try {
+          const result = await api('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+          });
+          state.auth.role = result.role || 'admin';
+          state.auth.username = username;
+          state.auth.csrfToken = result.csrfToken;
+          setAuthUi();
+          await boot();
+        } catch (error) {
+          toast(error.message, 'error');
+        }
+      });
+
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        try {
+          await api('/api/auth/logout', { method: 'POST' });
+        } catch {}
+        state.auth = { role: 'guest', username: null, csrfToken: null };
+        setAuthUi();
+      });
+
+      setAuthUi();
       boot().catch((error) => toast(error.message, 'error'));
     </script>
   </body>
