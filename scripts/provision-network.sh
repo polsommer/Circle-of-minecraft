@@ -347,21 +347,6 @@ download_plugin_from_modrinth "geyser" "$PROXY_DIR/plugins" "$PWD/Geyser-BungeeC
 download_plugin_from_modrinth "floodgate" "$PROXY_DIR/plugins" "$PWD/floodgate-bungee.jar" 1 "bungeecord,waterfall,velocity" "$PAPER_VERSION"
 download_plugin_from_modrinth "viaversion" "$PROXY_DIR/plugins" "" 0 "bungeecord,waterfall,velocity" "$PAPER_VERSION"
 
-GEYSER_CONFIG_DIR="$PROXY_DIR/plugins/Geyser-BungeeCord"
-mkdir -p "$GEYSER_CONFIG_DIR"
-if [[ ! -f "$GEYSER_CONFIG_DIR/config.yml" ]]; then
-  cat > "$GEYSER_CONFIG_DIR/config.yml" <<'EOF_GEYSER'
-bedrock:
-  address: 0.0.0.0
-  port: 19132
-remote:
-  address: 127.0.0.1
-  port: 25565
-  auth-type: floodgate
-EOF_GEYSER
-  echo "Created Geyser config with floodgate auth and Bedrock listener on 0.0.0.0:19132."
-fi
-
 cat > "$PROXY_DIR/config.yml" <<YAML
 listeners:
 - query_port: 25565
