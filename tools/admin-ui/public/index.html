@@ -3,86 +3,343 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Circle of Minecraft Admin UI</title>
-    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <title>Circle of Minecraft Dashboard</title>
     <style>
-      body { font-family: system-ui, sans-serif; margin: 2rem; }
-      table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; }
-      button { margin-right: 0.35rem; }
-      .running { color: #0a7a22; font-weight: 700; }
-      .stopped { color: #a80d0d; font-weight: 700; }
-      .muted { color: #666; }
-      pre { background: #111; color: #f3f3f3; padding: 0.75rem; overflow: auto; }
+      :root {
+        --bg: #0b1220;
+        --surface: #101b31;
+        --surface-alt: #172540;
+        --text: #e6edf8;
+        --muted: #a8b3c9;
+        --good: #2ecc71;
+        --bad: #ff6b6b;
+        --accent: #5dade2;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: linear-gradient(180deg, #070d1c 0%, #0b1220 100%);
+        color: var(--text);
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+      h1, h2 { margin: 0; }
+      .header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; }
+      .muted { color: var(--muted); }
+      .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+      .card { background: var(--surface); border: 1px solid #233458; border-radius: 12px; padding: 14px; }
+      .status-pill { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 700; }
+      .up { background: rgba(46, 204, 113, .2); color: var(--good); }
+      .down { background: rgba(255, 107, 107, .2); color: var(--bad); }
+      .section { margin-top: 18px; }
+      .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+      .chart { background: var(--surface); border: 1px solid #233458; border-radius: 12px; padding: 8px 10px; }
+      canvas { width: 100%; height: 150px; background: #0a1529; border-radius: 8px; }
+      table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 12px; overflow: hidden; }
+      th, td { text-align: left; padding: 10px; border-bottom: 1px solid #223252; }
+      th { background: var(--surface-alt); font-size: 13px; color: #c5d2eb; }
+      button { background: #2c4c86; border: none; color: white; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+      button:hover { background: #3460a5; }
+      button.danger { background: #8c2f45; }
+      button[disabled] { opacity: .5; cursor: not-allowed; }
+      .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+      .toast-wrap { position: fixed; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
+      .toast { background: #1c2e4f; border: 1px solid #2a4675; padding: 10px 12px; border-radius: 10px; min-width: 220px; }
+      .toast.error { border-color: #9f3f4f; }
+      .role-badge { font-size: 12px; background: #1d3359; border: 1px solid #2b4c82; padding: 4px 8px; border-radius: 999px; }
     </style>
   </head>
   <body>
-    <h1>Circle of Minecraft Admin UI</h1>
-    <p class="muted">Allowed servers: proxy, lobby, survival.</p>
+    <div class="container">
+      <div class="header">
+        <div>
+          <h1>Circle of Minecraft Dashboard</h1>
+          <div class="muted">Single-page admin dashboard with live telemetry and controls.</div>
+        </div>
+        <div>
+          <span class="role-badge" id="role-badge"></span>
+        </div>
+      </div>
 
-    <button
-      hx-get="/api/servers"
-      hx-trigger="click, load, every 8s"
-      hx-target="#servers-body"
-      hx-swap="innerHTML"
-      hx-on::after-request="renderRows(event.detail.xhr.responseText)"
-    >
-      Refresh
-    </button>
+      <section class="section">
+        <h2>Global status</h2>
+        <div id="status-cards" class="card-grid"></div>
+      </section>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Server</th>
-          <th>Status</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="servers-body">
-        <tr><td colspan="3">Loading...</td></tr>
-      </tbody>
-    </table>
+      <section class="section">
+        <h2>Live charts</h2>
+        <div class="chart-grid">
+          <div class="chart"><div>TPS</div><canvas id="chart-tps"></canvas></div>
+          <div class="chart"><div>MSPT</div><canvas id="chart-mspt"></canvas></div>
+          <div class="chart"><div>Player count</div><canvas id="chart-players"></canvas></div>
+          <div class="chart"><div>Memory (MB)</div><canvas id="chart-memory"></canvas></div>
+          <div class="chart"><div>CPU (%)</div><canvas id="chart-cpu"></canvas></div>
+        </div>
+      </section>
 
-    <h3>Last command output</h3>
-    <pre id="output">(none)</pre>
+      <section class="section">
+        <h2>Online players</h2>
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Server</th><th>Ping</th></tr>
+          </thead>
+          <tbody id="players-body"></tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>Plugin manager</h2>
+        <table>
+          <thead>
+            <tr><th>Server</th><th>Plugin</th><th>Installed version</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="plugins-body"></tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>Server controls</h2>
+        <table>
+          <thead>
+            <tr><th>Server</th><th>Status</th><th>Controls</th></tr>
+          </thead>
+          <tbody id="controls-body"></tbody>
+        </table>
+      </section>
+    </div>
+
+    <div class="toast-wrap" id="toasts"></div>
 
     <script>
-      function renderRows(raw) {
-        let data;
-        try {
-          data = JSON.parse(raw);
-        } catch {
-          document.getElementById('servers-body').innerHTML = '<tr><td colspan="3">Failed to load status</td></tr>';
+      const role = new URLSearchParams(window.location.search).get('role') === 'admin' ? 'admin' : 'viewer';
+      document.getElementById('role-badge').textContent = `Role: ${role}`;
+
+      const state = {
+        servers: {},
+        metrics: {
+          tps: [],
+          mspt: [],
+          players: [],
+          memory: [],
+          cpu: []
+        }
+      };
+
+      function toast(message, kind = 'info') {
+        const node = document.createElement('div');
+        node.className = `toast ${kind === 'error' ? 'error' : ''}`;
+        node.textContent = message;
+        document.getElementById('toasts').appendChild(node);
+        setTimeout(() => node.remove(), 3500);
+      }
+
+      function formatUptime(seconds) {
+        if (!Number.isFinite(seconds) || seconds < 1) return '—';
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        return `${h}h ${m}m`;
+      }
+
+      function pushMetric(name, value) {
+        const arr = state.metrics[name];
+        arr.push(value ?? null);
+        if (arr.length > 80) arr.shift();
+      }
+
+      function drawChart(id, values, color, maxHint = null) {
+        const canvas = document.getElementById(id);
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width = canvas.clientWidth * window.devicePixelRatio;
+        const h = canvas.height = canvas.clientHeight * window.devicePixelRatio;
+        ctx.clearRect(0, 0, w, h);
+
+        const points = values.filter((v) => Number.isFinite(v));
+        if (!points.length) {
+          ctx.fillStyle = '#91a0bf';
+          ctx.font = `${12 * window.devicePixelRatio}px sans-serif`;
+          ctx.fillText('Waiting for telemetry...', 12 * window.devicePixelRatio, 24 * window.devicePixelRatio);
           return;
         }
 
-        const rows = (data.servers || []).map((server) => {
-          const statusClass = server.status === 'running' ? 'running' : 'stopped';
-          const btn = (action) => `<button onclick="runAction('${server.name}','${action}')">${action}</button>`;
+        const maxVal = maxHint || Math.max(...points, 1);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2 * window.devicePixelRatio;
+        ctx.beginPath();
+        values.forEach((v, i) => {
+          const x = (i / Math.max(values.length - 1, 1)) * (w - 16) + 8;
+          const y = Number.isFinite(v) ? h - 8 - ((v / maxVal) * (h - 16)) : h - 8;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      }
+
+      function renderCharts() {
+        drawChart('chart-tps', state.metrics.tps, '#57c7ff', 20);
+        drawChart('chart-mspt', state.metrics.mspt, '#f8c471', 80);
+        drawChart('chart-players', state.metrics.players, '#58d68d');
+        drawChart('chart-memory', state.metrics.memory, '#bb8fce');
+        drawChart('chart-cpu', state.metrics.cpu, '#ec7063', 100);
+      }
+
+      function renderStatusCards() {
+        const cards = Object.values(state.servers).map((srv) => {
+          const up = srv.status === 'running';
+          return `<div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <strong>${srv.name}</strong>
+              <span class="status-pill ${up ? 'up' : 'down'}">${up ? 'UP' : 'DOWN'}</span>
+            </div>
+            <div class="muted">Port: ${srv.port || '—'}</div>
+            <div class="muted">Uptime: ${formatUptime(srv.uptimeSeconds)}</div>
+          </div>`;
+        });
+        document.getElementById('status-cards').innerHTML = cards.join('') || '<div class="card">No servers.</div>';
+      }
+
+      function renderControls() {
+        const body = document.getElementById('controls-body');
+        body.innerHTML = Object.values(state.servers).map((srv) => {
+          const statusClass = srv.status === 'running' ? 'up' : 'down';
+          const restartDisabled = role !== 'admin' ? 'disabled title="Admin only"' : '';
           return `<tr>
-            <td>${server.name}</td>
-            <td class="${statusClass}">${server.status}</td>
-            <td>${btn('start')}${btn('stop')}${btn('restart')}</td>
+            <td>${srv.name}</td>
+            <td><span class="status-pill ${statusClass}">${srv.status}</span></td>
+            <td class="actions">
+              <button onclick="runServerAction('${srv.name}','start')">Start</button>
+              <button onclick="runServerAction('${srv.name}','stop')">Stop</button>
+              <button class="danger" ${restartDisabled} onclick="runServerAction('${srv.name}','restart', true)">Restart</button>
+            </td>
           </tr>`;
-        });
-
-        document.getElementById('servers-body').innerHTML = rows.join('') || '<tr><td colspan="3">No servers</td></tr>';
+        }).join('');
       }
 
-      async function runAction(name, action) {
-        const output = document.getElementById('output');
-        output.textContent = `Running ${action} on ${name}...`;
-
-        const response = await fetch(`/api/servers/${name}/${action}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' }
-        });
-
-        const result = await response.json();
-        output.textContent = JSON.stringify(result, null, 2);
-
-        htmx.ajax('GET', '/api/servers', '#servers-body').then((resp) => renderRows(resp));
+      function renderPlayers(players) {
+        const body = document.getElementById('players-body');
+        body.innerHTML = players.map((p) => `<tr><td>${p.name}</td><td>${p.server}</td><td>${p.ping ?? '—'} ms</td></tr>`).join('') ||
+          '<tr><td colspan="3" class="muted">No online players.</td></tr>';
       }
+
+      function renderPlugins(rows) {
+        const body = document.getElementById('plugins-body');
+        body.innerHTML = rows.map((row) => {
+          const deleteDisabled = role !== 'admin' ? 'disabled title="Admin only"' : '';
+          return `<tr>
+            <td>${row.server}</td>
+            <td>${row.plugin}</td>
+            <td>${row.version || 'unknown'}</td>
+            <td class="actions">
+              <button onclick="pluginAction('${row.server}','${encodeURIComponent(row.plugin)}','enable')">Enable</button>
+              <button onclick="pluginAction('${row.server}','${encodeURIComponent(row.plugin)}','disable')">Disable</button>
+              <button onclick="pluginAction('${row.server}','${encodeURIComponent(row.plugin)}','reload')">Reload</button>
+              <button class="danger" ${deleteDisabled} onclick="pluginAction('${row.server}','${encodeURIComponent(row.plugin)}','delete', true)">Delete</button>
+            </td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="4" class="muted">No plugins detected.</td></tr>';
+      }
+
+      async function api(path, options = {}) {
+        const headers = Object.assign({ 'x-role': role }, options.headers || {});
+        const response = await fetch(path, { ...options, headers });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `Request failed (${response.status})`);
+        return payload;
+      }
+
+      async function runServerAction(server, action, destructive = false) {
+        if (destructive) {
+          if (role !== 'admin') {
+            toast('Only admin can run restart.', 'error');
+            return;
+          }
+          if (!confirm(`Confirm ${action} for ${server}?`)) return;
+        }
+
+        const prev = { ...state.servers[server] };
+        if (action === 'start') state.servers[server].status = 'running';
+        if (action === 'stop') state.servers[server].status = 'stopped';
+        if (action === 'restart') state.servers[server].status = 'running';
+        renderStatusCards();
+        renderControls();
+
+        try {
+          await api(`/api/servers/${server}/${action}`, { method: 'POST' });
+          toast(`${server}: ${action} queued`);
+        } catch (error) {
+          state.servers[server] = prev;
+          renderStatusCards();
+          renderControls();
+          toast(error.message, 'error');
+        }
+      }
+
+      async function pluginAction(server, plugin, action, destructive = false) {
+        if (destructive) {
+          if (role !== 'admin') {
+            toast('Only admin can delete plugins.', 'error');
+            return;
+          }
+          if (!confirm(`Delete plugin ${decodeURIComponent(plugin)} from ${server}?`)) return;
+        }
+
+        try {
+          const method = action === 'delete' ? 'DELETE' : 'POST';
+          await api(`/api/servers/${server}/plugins/${plugin}/${action === 'delete' ? '' : action}`.replace(/\/$/, ''), { method });
+          toast(`${decodeURIComponent(plugin)}: ${action} succeeded`);
+          await refreshPlugins();
+        } catch (error) {
+          toast(error.message, 'error');
+        }
+      }
+
+      async function refreshServers() {
+        const data = await api('/api/servers');
+        data.servers.forEach((server) => { state.servers[server.name] = server; });
+        renderStatusCards();
+        renderControls();
+      }
+
+      async function refreshOverview() {
+        const data = await api('/api/metrics/overview');
+        const items = Object.values(data.byServer || {}).filter(Boolean);
+        const avg = (key) => items.length ? items.reduce((sum, item) => sum + Number(item[key] || 0), 0) / items.length : null;
+        const tps = avg('tps');
+        const mspt = Number.isFinite(tps) && tps > 0 ? 1000 / (tps * 20) : null;
+        pushMetric('tps', tps);
+        pushMetric('mspt', mspt);
+        pushMetric('players', data.totals?.players ?? 0);
+        pushMetric('memory', data.totals?.memoryMb ?? 0);
+        pushMetric('cpu', data.totals?.cpuPercent ?? 0);
+        renderCharts();
+      }
+
+      async function refreshPlayers() {
+        const data = await api('/api/players/online');
+        renderPlayers(data.players || []);
+      }
+
+      async function refreshPlugins() {
+        const all = [];
+        for (const name of ['proxy', 'lobby', 'survival']) {
+          try {
+            const result = await api(`/api/servers/${name}/plugins`);
+            (result.plugins || []).forEach((plugin) => all.push({ server: name, ...plugin }));
+          } catch {
+            // Keep rendering remaining servers.
+          }
+        }
+        renderPlugins(all);
+      }
+
+      async function boot() {
+        await Promise.all([refreshServers(), refreshOverview(), refreshPlayers(), refreshPlugins()]);
+        setInterval(() => refreshServers().catch((error) => toast(error.message, 'error')), 8000);
+        setInterval(() => refreshOverview().catch(() => {}), 4000);
+        setInterval(() => refreshPlayers().catch(() => {}), 6000);
+        setInterval(() => refreshPlugins().catch(() => {}), 20000);
+      }
+
+      boot().catch((error) => toast(error.message, 'error'));
     </script>
   </body>
 </html>
