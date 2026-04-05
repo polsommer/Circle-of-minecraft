@@ -239,3 +239,36 @@ Re-run provisioning:
 ```
 
 The script now auto-backs up and removes stale Paper config files so the current jar can regenerate compatible defaults on next boot.
+
+## Troubleshooting: Waterfall login spam (`bad packet` / `Unexpected packet`)
+
+If your proxy logs include repeated lines such as:
+
+- `bad packet, are mods in use!? No more bytes reading varint`
+- `Unexpected packet received during login process! ...`
+- `InitialHandler has pinged` from unknown internet IPs
+
+this is usually internet scanner/bot traffic hitting port `25565`, not a normal player issue.
+
+What to do:
+
+1. Keep your firewall strict (allow only expected public ports, block everything else).
+2. Keep Waterfall/proxy plugins current.
+3. Optionally add proxy-level anti-bot/rate-limit protection if your host is frequently scanned.
+
+These warnings are noisy but typically harmless unless they are saturating your host/network.
+
+## Troubleshooting: Proxy plugin jar rejected (`Plugin must have a plugin.yml or bungee.yml`)
+
+If Waterfall reports plugin load failures for files like `Geyser-Velocity.jar`, `geyser-fabric-...jar`, or `Floodgate-Neoforge-...jar`, you have the wrong platform build in the proxy `plugins/` folder.
+
+- Waterfall needs **Bungee/Waterfall-targeted** plugin jars.
+- Velocity/Fabric/NeoForge/Bukkit jars will not load in Waterfall.
+
+Fix:
+
+```bash
+./scripts/provision-network.sh
+```
+
+The provisioning script now resolves Modrinth plugins using only `bungeecord,waterfall` loaders for proxy downloads, which prevents accidental Velocity/Fabric/NeoForge artifacts.
