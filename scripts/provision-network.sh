@@ -14,7 +14,7 @@ PRESERVE_EXISTING_JARS="${PRESERVE_EXISTING_JARS:-0}"
 
 PAPER_VERSION="${PAPER_VERSION:-}"
 WATERFALL_VERSION="${WATERFALL_VERSION:-}"
-PROXY_LISTEN_IP="${PROXY_LISTEN_IP:-192.168.88.100}"
+PROXY_LISTEN_IP="${PROXY_LISTEN_IP:-0.0.0.0}"
 PROXY_BIND_ADDRESS="$PROXY_LISTEN_IP"
 
 if ! command -v java >/dev/null 2>&1; then
@@ -32,12 +32,12 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 1
 fi
 
-if command -v ip >/dev/null 2>&1; then
+if [[ "$PROXY_LISTEN_IP" != "0.0.0.0" ]] && command -v ip >/dev/null 2>&1; then
   if ! ip -4 addr show | grep -Fq "inet ${PROXY_LISTEN_IP}/"; then
     echo "Warning: PROXY_LISTEN_IP ${PROXY_LISTEN_IP} is not configured on this host. Falling back to 0.0.0.0."
     PROXY_BIND_ADDRESS="0.0.0.0"
   fi
-else
+elif [[ "$PROXY_LISTEN_IP" != "0.0.0.0" ]]; then
   echo "Warning: 'ip' command not found; skipping PROXY_LISTEN_IP validation."
 fi
 
