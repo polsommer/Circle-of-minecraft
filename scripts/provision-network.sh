@@ -415,7 +415,7 @@ servers:
     address: 127.0.0.1:25566
     restricted: false
   survival:
-    motd: '&6Survival World'
+    motd: '&bCreative World'
     address: 127.0.0.1:25567
     restricted: false
 YAML
@@ -436,7 +436,9 @@ cat > "$SURVIVAL_DIR/server.properties" <<'EOF_PROPS'
 server-port=25567
 server-ip=127.0.0.1
 online-mode=false
-motd=Circle Survival
+motd=Circle Creative
+gamemode=creative
+force-gamemode=true
 max-players=75
 view-distance=10
 simulation-distance=8
